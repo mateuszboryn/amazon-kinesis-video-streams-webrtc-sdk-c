@@ -8,6 +8,9 @@ option(ADD_MUCLIBC "Add -muclibc c flag" OFF)
 option(BUILD_DEPENDENCIES "Whether or not to build depending libraries from source" ON)
 option(BUILD_STATIC_LIBS "Build all libraries statically. (This includes third-party libraries.)" OFF)
 option(BUILD_OPENSSL_PLATFORM "If buildng OpenSSL what is the target platform" OFF)
+option(BUILD_OPENSSL "Whether or not to build OpenSSL library" OFF)
+option(BUILD_WEBSOCKETS "Whether or not to build WebSockets library" OFF)
+option(BUILD_SRTP "Whether or not to build srtp library" OFF)
 option(BUILD_LIBSRTP_HOST_PLATFORM "If buildng LibSRTP what is the current platform" OFF)
 option(BUILD_LIBSRTP_DESTINATION_PLATFORM "If buildng LibSRTP what is the destination platform" OFF)
 
@@ -77,24 +80,31 @@ if(BUILD_DEPENDENCIES)
 
   message(STATUS "Begin building dependencies.")
 
-  set(BUILD_ARGS -DBUILD_STATIC_LIBS=${BUILD_STATIC_LIBS}
-                 -DBUILD_OPENSSL_PLATFORM=${BUILD_OPENSSL_PLATFORM}
-                 -DOPENSSL_EXTRA=${OPENSSL_EXTRA})
-  build_dependency(openssl ${BUILD_ARGS})
-  set(OPENSSL_ROOT_DIR ${OPEN_SRC_INSTALL_PREFIX})
+  if(BUILD_OPENSSL)
+    set(BUILD_ARGS -DBUILD_STATIC_LIBS=${BUILD_STATIC_LIBS}
+                  -DBUILD_OPENSSL_PLATFORM=${BUILD_OPENSSL_PLATFORM}
+                  -DOPENSSL_EXTRA=${OPENSSL_EXTRA})
+    build_dependency(openssl ${BUILD_ARGS})
+    set(OPENSSL_ROOT_DIR ${OPEN_SRC_INSTALL_PREFIX})
+  endif()
 
-  set(BUILD_ARGS -DBUILD_STATIC_LIBS=${BUILD_STATIC_LIBS}
-                 -DOPENSSL_DIR=${OPEN_SRC_INSTALL_PREFIX})
-  build_dependency(websockets ${BUILD_ARGS})
+  if(BUILD_WEBSOCKETS)
+    set(BUILD_ARGS -DBUILD_STATIC_LIBS=${BUILD_STATIC_LIBS}
+                  -DOPENSSL_DIR=${OPEN_SRC_INSTALL_PREFIX})
+    build_dependency(websockets ${BUILD_ARGS})
+  endif()
 
-  set(BUILD_ARGS
-      -DBUILD_STATIC_LIBS=${BUILD_STATIC_LIBS}
-      -DOPENSSL_DIR=${OPEN_SRC_INSTALL_PREFIX}
-      -DBUILD_LIBSRTP_HOST_PLATFORM=${BUILD_LIBSRTP_HOST_PLATFORM}
-      -DBUILD_LIBSRTP_DESTINATION_PLATFORM=${BUILD_LIBSRTP_DESTINATION_PLATFORM}
-  )
-  build_dependency(srtp ${BUILD_ARGS})
+  if(BUILD_SRTP)
+    set(BUILD_ARGS
+        -DBUILD_STATIC_LIBS=${BUILD_STATIC_LIBS}
+        -DOPENSSL_DIR=${OPEN_SRC_INSTALL_PREFIX}
+        -DBUILD_LIBSRTP_HOST_PLATFORM=${BUILD_LIBSRTP_HOST_PLATFORM}
+        -DBUILD_LIBSRTP_DESTINATION_PLATFORM=${BUILD_LIBSRTP_DESTINATION_PLATFORM}
+    )
+    build_dependency(srtp ${BUILD_ARGS})
+  endif()
 
+  
   build_dependency(usrsctp)
   build_dependency(jsmn)
 
