@@ -11,6 +11,7 @@ option(BUILD_OPENSSL_PLATFORM "If buildng OpenSSL what is the target platform" O
 option(BUILD_OPENSSL "Whether or not to build OpenSSL library" OFF)
 option(BUILD_WEBSOCKETS "Whether or not to build WebSockets library" OFF)
 option(BUILD_SRTP "Whether or not to build srtp library" OFF)
+option(BUILD_USRSCTP "Whether or not to build usrsctp library" OFF)
 option(BUILD_LIBSRTP_HOST_PLATFORM "If buildng LibSRTP what is the current platform" OFF)
 option(BUILD_LIBSRTP_DESTINATION_PLATFORM "If buildng LibSRTP what is the destination platform" OFF)
 
@@ -104,8 +105,10 @@ if(BUILD_DEPENDENCIES)
     build_dependency(srtp ${BUILD_ARGS})
   endif()
 
-  
-  build_dependency(usrsctp)
+  if(BUILD_USRSCTP)
+    build_dependency(usrsctp)
+  endif()
+
   build_dependency(jsmn)
 
   if(BUILD_TEST)
