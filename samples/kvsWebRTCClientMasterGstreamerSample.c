@@ -155,8 +155,10 @@ PVOID sendGstreamerAudioVideo(PVOID args)
             }
             else {
                 pipeline = gst_parse_launch(
-                        "autovideosrc ! queue ! videoconvert ! video/x-raw,width=1280,height=720,framerate=30/1 ! x264enc bframes=0 speed-preset=veryfast key-int-max=30 bitrate=512 ! "
-                        "video/x-h264,stream-format=byte-stream,alignment=au,profile=baseline ! appsink sync=TRUE emit-signals=TRUE name=appsink-video",
+//                        "autovideosrc ! queue ! videoconvert ! video/x-raw,width=1280,height=720,framerate=30/1 ! x264enc bframes=0 speed-preset=veryfast key-int-max=30 bitrate=512 ! "
+//                        "video/x-h264,stream-format=byte-stream,alignment=au,profile=baseline ! appsink sync=TRUE emit-signals=TRUE name=appsink-video",
+                        "v4l2src device=/dev/video0 ! video/x-raw,width=640,height=480,framerate=30/1 ! omxh264enc ! video/x-h264,width=640,height=480 ! "
+			"appsink sync=TRUE emit-signals=TRUE name=appsink-video"
                         &error);
             }
             break;
