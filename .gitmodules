@@ -1,6 +1,7 @@
 [submodule "open-source/amazon-kinesis-video-streams-pic"]
 	path = open-source/amazon-kinesis-video-streams-pic
-	url = https://github.com/awslabs/amazon-kinesis-video-streams-pic.git
+	url = git@github.com:mateuszboryn/amazon-kinesis-video-streams-pic.git
 [submodule "open-source/amazon-kinesis-video-streams-producer-c"]
 	path = open-source/amazon-kinesis-video-streams-producer-c
-	url = https://github.com/awslabs/amazon-kinesis-video-streams-producer-c.git
+	url = git@github.com:mateuszboryn/amazon-kinesis-video-streams-producer-c.git
+	branch = rpi-demo
