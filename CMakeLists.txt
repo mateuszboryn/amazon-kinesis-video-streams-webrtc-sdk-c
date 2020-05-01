@@ -238,7 +238,7 @@ include_directories(${KINESIS_VIDEO_WEBRTC_CLIENT_SRC}/src/ice)
 include_directories(${KINESIS_VIDEO_PRODUCER_C_SRC}/src/include)
 
 set(BUILD_COMMON_LWS
-    TRUE
+    FALSE
     CACHE BOOL "Build ProducerC with LWS Support" FORCE)
 set(BUILD_COMMON_CURL
     FALSE
