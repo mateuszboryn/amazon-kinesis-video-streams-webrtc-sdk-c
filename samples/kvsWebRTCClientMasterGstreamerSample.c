@@ -110,6 +110,7 @@ CleanUp:
 }
 
 GstFlowReturn on_new_sample_video(GstElement *sink, gpointer data) {
+    printf("on_new_sample_video\n");
     return on_new_sample(sink, data, DEFAULT_VIDEO_TRACK_ID);
 }
 
@@ -356,7 +357,8 @@ INT32 main(INT32 argc, CHAR *argv[])
 
     pSampleConfiguration->videoSource = sendGstreamerAudioVideo;
     pSampleConfiguration->mediaType = SAMPLE_STREAMING_VIDEO_ONLY;
-    pSampleConfiguration->receiveAudioVideoSource = receiveGstreamerAudioVideo;
+//    pSampleConfiguration->receiveAudioVideoSource = receiveGstreamerAudioVideo;
+    pSampleConfiguration->receiveAudioVideoSource = NULL;
     pSampleConfiguration->onDataChannel = onDataChannel;
     pSampleConfiguration->customData = (UINT64) pSampleConfiguration;
     pSampleConfiguration->useTestSrc = FALSE;
