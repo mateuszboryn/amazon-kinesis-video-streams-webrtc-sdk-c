@@ -110,12 +110,10 @@ CleanUp:
 }
 
 GstFlowReturn on_new_sample_video(GstElement *sink, gpointer data) {
-    printf("on_new_sample_video\n");
     return on_new_sample(sink, data, DEFAULT_VIDEO_TRACK_ID);
 }
 
 GstFlowReturn on_new_sample_audio(GstElement *sink, gpointer data) {
-    printf("on_new_sample_audio\n");
     return on_new_sample(sink, data, DEFAULT_AUDIO_TRACK_ID);
 }
 
