@@ -403,11 +403,11 @@ STATUS createSampleStreamingSession(PSampleConfiguration pSampleConfiguration, P
                                            PSampleStreamingSession *ppSampleStreamingSession)
 {
     STATUS retStatus = STATUS_SUCCESS;
-    RtcMediaStreamTrack videoTrack /*, audioTrack*/;
+    RtcMediaStreamTrack videoTrack, audioTrack;
     PSampleStreamingSession pSampleStreamingSession = NULL;
 
     MEMSET(&videoTrack, 0x00, SIZEOF(RtcMediaStreamTrack));
-    // MEMSET(&audioTrack, 0x00, SIZEOF(RtcMediaStreamTrack));
+    MEMSET(&audioTrack, 0x00, SIZEOF(RtcMediaStreamTrack));
 
     CHK(pSampleConfiguration != NULL && ppSampleStreamingSession != NULL, STATUS_NULL_ARG);
     CHK((isMaster && peerId != NULL) || !isMaster, STATUS_INVALID_ARG);
@@ -442,7 +442,7 @@ STATUS createSampleStreamingSession(PSampleConfiguration pSampleConfiguration, P
 
     // Declare that we support H264,Profile=42E01F,level-asymmetry-allowed=1,packetization-mode=1 and Opus
     CHK_STATUS(addSupportedCodec(pSampleStreamingSession->pPeerConnection, RTC_CODEC_H264_PROFILE_42E01F_LEVEL_ASYMMETRY_ALLOWED_PACKETIZATION_MODE));
-    // CHK_STATUS(addSupportedCodec(pSampleStreamingSession->pPeerConnection, RTC_CODEC_OPUS));
+    CHK_STATUS(addSupportedCodec(pSampleStreamingSession->pPeerConnection, RTC_CODEC_OPUS));
 
     // Add a SendRecv Transceiver of type video
     videoTrack.kind = MEDIA_STREAM_TRACK_KIND_VIDEO;
@@ -459,7 +459,7 @@ STATUS createSampleStreamingSession(PSampleConfiguration pSampleConfiguration, P
                        sampleBandwidthEstimationHandler));
 
     // Add a SendRecv Transceiver of type video
-    /*audioTrack.kind = MEDIA_STREAM_TRACK_KIND_AUDIO;
+    audioTrack.kind = MEDIA_STREAM_TRACK_KIND_AUDIO;
     audioTrack.codec = RTC_CODEC_OPUS;
     STRCPY(audioTrack.streamId, "myKvsVideoStream");
     STRCPY(audioTrack.trackId, "myAudioTrack");
@@ -470,7 +470,7 @@ STATUS createSampleStreamingSession(PSampleConfiguration pSampleConfiguration, P
 
     CHK_STATUS(transceiverOnBandwidthEstimation(pSampleStreamingSession->pAudioRtcRtpTransceiver,
                        (UINT64) pSampleStreamingSession,
-                       sampleBandwidthEstimationHandler));*/
+                       sampleBandwidthEstimationHandler));
 
 CleanUp:
 
