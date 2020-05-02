@@ -110,10 +110,12 @@ CleanUp:
 }
 
 GstFlowReturn on_new_sample_video(GstElement *sink, gpointer data) {
+    printf("on_new_sample_video\n");
     return on_new_sample(sink, data, DEFAULT_VIDEO_TRACK_ID);
 }
 
 GstFlowReturn on_new_sample_audio(GstElement *sink, gpointer data) {
+    printf("on_new_sample_audio\n");
     return on_new_sample(sink, data, DEFAULT_AUDIO_TRACK_ID);
 }
 
@@ -149,14 +151,16 @@ PVOID sendGstreamerAudioVideo(PVOID args)
         case SAMPLE_STREAMING_VIDEO_ONLY:
             if(pSampleConfiguration->useTestSrc) {
                 pipeline = gst_parse_launch(
-                    "videotestsrc is-live=TRUE ! queue ! videoconvert ! video/x-raw,width=1280,height=720,framerate=30/1 ! x264enc bframes=0 speed-preset=veryfast key-int-max=30 bitrate=512 ! "
+                    "videotestsrc is-live=TRUE ! queue ! videoconvert ! video/x-raw,width=640,height=480,framerate=30/1 ! x264enc bframes=0 speed-preset=veryfast key-int-max=30 bitrate=512 ! "
                     "video/x-h264,stream-format=byte-stream,alignment=au,profile=baseline ! appsink sync=TRUE emit-signals=TRUE name=appsink-video",
                      &error);
             }
             else {
                 pipeline = gst_parse_launch(
-                        "autovideosrc ! queue ! videoconvert ! video/x-raw,width=1280,height=720,framerate=30/1 ! x264enc bframes=0 speed-preset=veryfast key-int-max=30 bitrate=512 ! "
-                        "video/x-h264,stream-format=byte-stream,alignment=au,profile=baseline ! appsink sync=TRUE emit-signals=TRUE name=appsink-video",
+                        // "autovideosrc ! queue ! videoconvert ! video/x-raw,width=1280,height=720,framerate=30/1 ! x264enc bframes=0 speed-preset=veryfast key-int-max=30 bitrate=512 ! "
+                        // "video/x-h264,stream-format=byte-stream,alignment=au,profile=baseline ! appsink sync=TRUE emit-signals=TRUE name=appsink-video",
+                        "v4l2src device=/dev/video0 ! video/x-raw,width=640,height=480,framerate=30/1 ! omxh264enc ! video/x-h264,width=640,height=480 ! "
+			            "appsink sync=TRUE emit-signals=TRUE name=appsink-video",
                         &error);
             }
             break;
@@ -164,14 +168,14 @@ PVOID sendGstreamerAudioVideo(PVOID args)
         case SAMPLE_STREAMING_AUDIO_VIDEO:
              if(pSampleConfiguration->useTestSrc) {
                  pipeline = gst_parse_launch(
-                    "videotestsrc is-live=TRUE ! queue ! videoconvert ! video/x-raw,width=1280,height=720,framerate=30/1 ! x264enc bframes=0 speed-preset=veryfast key-int-max=30 bitrate=512 ! "
+                    "videotestsrc is-live=TRUE ! queue ! videoconvert ! video/x-raw,width=640,height=480,framerate=30/1 ! x264enc bframes=0 speed-preset=veryfast key-int-max=30 bitrate=512 ! "
                     "video/x-h264,stream-format=byte-stream,alignment=au,profile=baseline ! appsink sync=TRUE emit-signals=TRUE name=appsink-video audiotestsrc is-live=TRUE ! "
                     "queue leaky=2 max-size-buffers=400 ! audioconvert ! audioresample ! opusenc ! audio/x-opus,rate=48000,channels=2 ! appsink sync=TRUE emit-signals=TRUE name=appsink-audio",
                     &error);
             }
             else {
                 pipeline = gst_parse_launch(
-                    "autovideosrc ! queue ! videoconvert ! video/x-raw,width=1280,height=720,framerate=30/1 ! x264enc bframes=0 speed-preset=veryfast key-int-max=30 bitrate=512 ! "
+                    "autovideosrc ! queue ! videoconvert ! video/x-raw,width=640,height=480,framerate=30/1 ! x264enc bframes=0 speed-preset=veryfast key-int-max=30 bitrate=512 ! "
                     "video/x-h264,stream-format=byte-stream,alignment=au,profile=baseline ! appsink sync=TRUE emit-signals=TRUE name=appsink-video autoaudiosrc ! "
                     "queue leaky=2 max-size-buffers=400 ! audioconvert ! audioresample ! opusenc ! audio/x-opus,rate=48000,channels=2 ! appsink sync=TRUE emit-signals=TRUE name=appsink-audio",
                     &error);
