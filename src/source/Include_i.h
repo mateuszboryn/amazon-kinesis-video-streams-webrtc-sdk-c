@@ -43,6 +43,7 @@ extern "C" {
 #include <net/if.h>
 #include <arpa/inet.h>
 #include <fcntl.h>
+#include <netinet/tcp.h>
 #endif
 
 // Max uFrag and uPwd length as documented in https://tools.ietf.org/html/rfc5245#section-15.4
@@ -121,6 +122,7 @@ STATUS generateJSONSafeString(PCHAR, UINT32);
 #include "Rtp/Codecs/RtpH264Payloader.h"
 #include "Rtp/Codecs/RtpOpusPayloader.h"
 #include "Rtp/Codecs/RtpG711Payloader.h"
+#include "Signaling/FileCache.h"
 #include "Signaling/Signaling.h"
 #include "Signaling/ChannelInfo.h"
 #include "Signaling/StateMachine.h"

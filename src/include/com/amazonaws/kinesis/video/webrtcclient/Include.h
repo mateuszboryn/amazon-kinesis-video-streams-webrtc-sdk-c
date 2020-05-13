@@ -1040,6 +1040,12 @@ typedef enum {
                                                         //!< use cases when the
                                                         //!< signaling channel is not being constantly
                                                         //!< created/deleted by other entities.
+    SIGNALING_API_CALL_CACHE_TYPE_FILE, //!< Cache DeleteSignalingChannel and GetSignalingChannelEndpoint
+                                        //!< backend API calls.
+                                        //!< In this mode, the actual backend APIs will be
+                                        //!< called once and the
+                                        //!< information will be cached into file
+                                        //!< which will allow the cache to persist next time the signaling client is created.
 } SIGNALING_API_CALL_CACHE_TYPE;
 
 /**
@@ -1297,7 +1303,17 @@ PUBLIC_API STATUS peerConnectionOnDataChannel(PRtcPeerConnection, UINT64, RtcOnD
 PUBLIC_API STATUS peerConnectionOnConnectionStateChange(PRtcPeerConnection, UINT64, RtcOnConnectionStateChange);
 
 /**
- * Load the sdp field of PRtcSessionDescriptionInit with latest local session description
+ * Load the sdp field of PRtcSessionDescriptionInit with pending or current local session description
+ *
+ * @param[in] PRtcPeerConnection Initialized RtcPeerConnection
+ * @param[in,out] PRtcSessionDescriptionInit IN/PRtcSessionDescriptionInit whose sdp field will be modified.
+ *
+ * @return STATUS code of the execution. STATUS_SUCCESS on success
+ */
+PUBLIC_API STATUS peerConnectionGetLocalDescription(PRtcPeerConnection, PRtcSessionDescriptionInit);
+
+/**
+ * Load the sdp field of PRtcSessionDescriptionInit with current local session description
  *
  * @param[in] PRtcPeerConnection Initialized RtcPeerConnection
  * @param[in,out] PRtcSessionDescriptionInit IN/PRtcSessionDescriptionInit whose sdp field will be modified.

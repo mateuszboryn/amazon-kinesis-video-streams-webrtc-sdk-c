@@ -17,7 +17,7 @@ extern "C" {
 #define KVS_ICE_CONNECTIVITY_CHECK_TIMEOUT                              10 * HUNDREDS_OF_NANOS_IN_A_SECOND
 #define KVS_ICE_CANDIDATE_NOMINATION_TIMEOUT                            10 * HUNDREDS_OF_NANOS_IN_A_SECOND
 #define KVS_ICE_SEND_KEEP_ALIVE_INTERVAL                                15 * HUNDREDS_OF_NANOS_IN_A_SECOND
-#define KVS_ICE_TURN_CONNECTION_SHUTDOWN_TIMEOUT                        5 * HUNDREDS_OF_NANOS_IN_A_SECOND
+#define KVS_ICE_TURN_CONNECTION_SHUTDOWN_TIMEOUT                        1 * HUNDREDS_OF_NANOS_IN_A_SECOND
 #define KVS_ICE_DEFAULT_TIMER_START_DELAY                               3 * HUNDREDS_OF_NANOS_IN_A_MILLISECOND
 
 // Ta in https://tools.ietf.org/html/rfc8445
@@ -26,7 +26,7 @@ extern "C" {
 /* Control the calling rate of iceCandidateGatheringTimerTask. Can affect STUN TURN candidate gathering time */
 #define KVS_ICE_GATHER_CANDIDATE_TIMER_POLLING_INTERVAL                 50 * HUNDREDS_OF_NANOS_IN_A_MILLISECOND
 
-/* Should see at least one keep alive within this period */
+/* ICE should've received at least one keep alive within this period. Since keep alives are send every 15s */
 #define KVS_ICE_ENTER_STATE_DISCONNECTION_GRACE_PERIOD                  2 * KVS_ICE_SEND_KEEP_ALIVE_INTERVAL
 #define KVS_ICE_ENTER_STATE_FAILED_GRACE_PERIOD                         15 * HUNDREDS_OF_NANOS_IN_A_SECOND
 
@@ -34,6 +34,7 @@ extern "C" {
 
 #define KVS_ICE_MAX_ICE_SERVERS                                         3
 #define KVS_ICE_TURN_CONECTION_TRACKERS                                 4
+#define KVS_ICE_MAX_NEW_LOCAL_CANDIDATES_TO_REPORT_AT_ONCE              10
 
 // https://tools.ietf.org/html/rfc5245#section-4.1.2.1
 #define ICE_PRIORITY_HOST_CANDIDATE_TYPE_PREFERENCE                     126
@@ -104,6 +105,9 @@ typedef struct {
      * TurnConnectionTracker this candidate is associated to */
     PTurnConnectionTracker pTurnConnectionTracker;
 
+    /* If candidate is local. Indicate whether candidate
+     * has been reported through IceNewLocalCandidateFunc */
+    BOOL reported;
     CHAR id[ICE_CANDIDATE_ID_LEN + 1];
 } IceCandidate, *PIceCandidate;
 
