@@ -17,6 +17,8 @@ extern "C" {
 #pragma clang diagnostic ignored "-Wgnu-zero-variadic-macro-arguments"
 #include <com/amazonaws/kinesis/video/client/Include.h>
 #include <com/amazonaws/kinesis/video/common/Include.h>
+#include <com/amazonaws/kinesis/video/webrtcclient/NullableDefs.h>
+
 #pragma clang diagnostic pop
 
 /*===========================================================================================*/
@@ -1406,6 +1408,18 @@ PUBLIC_API STATUS setLocalDescription(PRtcPeerConnection, PRtcSessionDescription
  * @return STATUS code of the execution. STATUS_SUCCESS on success
  */
 PUBLIC_API STATUS setRemoteDescription(PRtcPeerConnection, PRtcSessionDescriptionInit);
+
+/**
+ * @brief Instructs the RtcPeerConnection that ICE should be restarted. Subsequent calls to createOffer will create
+ * descriptions to restart ICE.
+ *
+ * Reference: https://www.w3.org/TR/webrtc/#dom-rtcpeerconnection-restartice
+ *
+ * @param[in] PRtcPeerConnection Initialized RtcPeerConnection
+ *
+ * @return - STATUS code of the execution. STATUS_SUCCESS on success
+ */
+PUBLIC_API STATUS restartIce(PRtcPeerConnection);
 
 /**
  * @brief Create a new RtcRtpTransceiver and add it to the set of transceivers.

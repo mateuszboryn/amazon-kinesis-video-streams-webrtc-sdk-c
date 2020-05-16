@@ -95,12 +95,9 @@ STATUS freeTurnConnection(PTurnConnection* ppTurnConnection)
         CHK_LOG_ERR(timerQueueCancelTimer(pTurnConnection->timerQueueHandle, (UINT32) timerCallbackId, (UINT64) pTurnConnection));
     }
 
-    /* acquire lock to make sure timerCallbackId is completely finished  */
-    MUTEX_LOCK(pTurnConnection->lock);
-    MUTEX_UNLOCK(pTurnConnection->lock);
-
     // shutdown control channel
     CHK_LOG_ERR(connectionListenerRemoveConnection(pTurnConnection->pConnectionListener, pTurnConnection->pControlChannel));
+    CHK_LOG_ERR(freeSocketConnection(&pTurnConnection->pControlChannel));
 
     // free transactionId store for each turn peer
     CHK_LOG_ERR(doubleListGetHeadNode(pTurnConnection->turnPeerList, &pCurNode));
@@ -684,6 +681,10 @@ STATUS turnConnectionSendData(PTurnConnection pTurnConnection, PBYTE pBuf, UINT3
 
     CHK(pTurnConnection != NULL && pDestIp != NULL, STATUS_NULL_ARG);
     CHK(pBuf != NULL && bufLen > 0, STATUS_INVALID_ARG);
+
+    MUTEX_LOCK(pTurnConnection->lock);
+    locked = TRUE;
+
     if (!(pTurnConnection->state == TURN_STATE_CREATE_PERMISSION ||
           pTurnConnection->state == TURN_STATE_BIND_CHANNEL ||
           pTurnConnection->state == TURN_STATE_READY)) {
@@ -693,13 +694,7 @@ STATUS turnConnectionSendData(PTurnConnection pTurnConnection, PBYTE pBuf, UINT3
         CHK(FALSE, retStatus);
     }
 
-    MUTEX_LOCK(pTurnConnection->lock);
-    locked = TRUE;
-
     pSendPeer = turnConnectionGetPeerWithIp(pTurnConnection, pDestIp);
-
-    MUTEX_UNLOCK(pTurnConnection->lock);
-    locked = FALSE;
 
     CHK_STATUS(getIpAddrStr(pDestIp, ipAddrStr, ARRAY_SIZE(ipAddrStr)));
     if (pSendPeer == NULL) {
@@ -714,6 +709,9 @@ STATUS turnConnectionSendData(PTurnConnection pTurnConnection, PBYTE pBuf, UINT3
         CHK(FALSE, retStatus);
     }
 
+    MUTEX_UNLOCK(pTurnConnection->lock);
+    locked = FALSE;
+
     /* need to serialize send because every send load data into the same buffer pTurnConnection->sendDataBuffer */
     MUTEX_LOCK(pTurnConnection->sendLock);
     sendLocked = TRUE;
@@ -727,12 +725,14 @@ STATUS turnConnectionSendData(PTurnConnection pTurnConnection, PBYTE pBuf, UINT3
     putInt16((PINT16) (pTurnConnection->sendDataBuffer + 2), (UINT16) bufLen);
     MEMCPY(pTurnConnection->sendDataBuffer + TURN_DATA_CHANNEL_SEND_OVERHEAD, pBuf, bufLen);
 
-    retStatus = socketConnectionSendData(pTurnConnection->pControlChannel,
-                                         pTurnConnection->sendDataBuffer,
-                                         paddedDataLen,
-                                         &pTurnConnection->turnServer.ipAddress);
+    retStatus = iceUtilsSendData(pTurnConnection->sendDataBuffer,
+                                 paddedDataLen,
+                                 &pTurnConnection->turnServer.ipAddress,
+                                 pTurnConnection->pControlChannel,
+                                 NULL, FALSE);
+
     if (STATUS_FAILED(retStatus)) {
-        DLOGW("socketConnectionSendData failed with 0x%08x", retStatus);
+        DLOGW("iceUtilsSendData failed with 0x%08x", retStatus);
         retStatus = STATUS_SUCCESS;
     }
 
@@ -1358,7 +1358,7 @@ STATUS turnConnectionTimerCallback(UINT32 timerId, UINT64 currentTime, UINT64 cu
     }
 
     if (sendStatus == STATUS_SOCKET_CONNECTION_CLOSED_ALREADY) {
-        DLOGE("TurnConnection socket %d closed unexpectedly");
+        DLOGE("TurnConnection socket %d closed unexpectedly", pTurnConnection->pControlChannel->localSocket);
         turnConnectionFatalError(pTurnConnection, sendStatus);
     }
 
@@ -1375,15 +1375,15 @@ CleanUp:
 
     CHK_LOG_ERR(retStatus);
 
+    if (locked) {
+        MUTEX_UNLOCK(pTurnConnection->lock);
+    }
+
     if (stopScheduling) {
         retStatus = STATUS_TIMER_QUEUE_STOP_SCHEDULING;
         if (pTurnConnection != NULL) {
             ATOMIC_STORE(&pTurnConnection->timerCallbackId, UINT32_MAX);
         }
-    }
-
-    if (locked) {
-        MUTEX_UNLOCK(pTurnConnection->lock);
     }
 
     return retStatus;
