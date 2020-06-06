@@ -166,13 +166,18 @@ PVOID sendGstreamerAudioVideo(PVOID args)
                         // "appsink sync=TRUE emit-signals=TRUE name=appsink-video",
 
                         // new (from KVS producer):
+                        // "v4l2src do-timestamp=TRUE device=/dev/video0 ! videoconvert ! video/x-raw,format=I420,width=640,height=480,framerate=30/1 ! "
+                        // "omxh264enc target-bitrate=300000 control-rate=1 periodicty-idr=45 inline-header=FALSE ! h264parse ! "
+                        // // "video/x-h264,stream-format=byte-stream,alignment=au,width=640,height=480,framerate=30/1,profile=baseline ! "
+                        // "video/x-h264,stream-format=byte-stream,alignment=au,profile=baseline ! "
+                        // "appsink sync=TRUE emit-signals=TRUE name=appsink-video",
+
+
+                        // new (from KVS producer):
                         "v4l2src do-timestamp=TRUE device=/dev/video0 ! videoconvert ! video/x-raw,format=I420,width=640,height=480,framerate=30/1 ! "
                         "omxh264enc target-bitrate=300000 control-rate=1 periodicty-idr=45 inline-header=FALSE ! h264parse ! "
-                        // "video/x-h264,stream-format=byte-stream,alignment=au,width=640,height=480,framerate=30/1,profile=baseline ! "
-                        "video/x-h264,stream-format=byte-stream,alignment=au,profile=baseline ! "
+                        "video/x-h264,stream-format=byte-stream,alignment=au,width=640,height=480,framerate=30/1,profile=baseline ! "
                         "appsink sync=TRUE emit-signals=TRUE name=appsink-video",
-
-
                         &error);
             }
             break;
@@ -188,10 +193,19 @@ PVOID sendGstreamerAudioVideo(PVOID args)
             }
             else {
                 pipeline = gst_parse_launch(
-                    "autovideosrc ! queue ! videoconvert ! video/x-raw,width=1280,height=720,framerate=[30/1,10000000/333333] ! "
-                    "x264enc bframes=0 speed-preset=veryfast bitrate=512 byte-stream=TRUE tune=zerolatency ! "
-                    "video/x-h264,stream-format=byte-stream,alignment=au,profile=baseline ! appsink sync=TRUE emit-signals=TRUE name=appsink-video autoaudiosrc ! "
-                    "queue leaky=2 max-size-buffers=400 ! audioconvert ! audioresample ! opusenc ! audio/x-opus,rate=48000,channels=2 ! appsink sync=TRUE emit-signals=TRUE name=appsink-audio",
+                    // "autovideosrc ! queue ! videoconvert ! video/x-raw,width=1280,height=720,framerate=[30/1,10000000/333333] ! "
+                    // "x264enc bframes=0 speed-preset=veryfast bitrate=512 byte-stream=TRUE tune=zerolatency ! "
+                    // "video/x-h264,stream-format=byte-stream,alignment=au,profile=baseline ! appsink sync=TRUE emit-signals=TRUE name=appsink-video autoaudiosrc ! "
+                    // "queue leaky=2 max-size-buffers=400 ! audioconvert ! audioresample ! opusenc ! audio/x-opus,rate=48000,channels=2 ! appsink sync=TRUE emit-signals=TRUE name=appsink-audio",
+
+                    "v4l2src do-timestamp=TRUE device=/dev/video0 ! videoconvert ! video/x-raw,format=I420,width=640,height=480,framerate=30/1 ! "
+                    "omxh264enc target-bitrate=300000 control-rate=1 periodicity-idr=45 inline-header=TRUE interval-intraframes=50 ! h264parse ! "
+                    "video/x-h264,stream-format=byte-stream,alignment=au,width=640,height=480,framerate=30/1,profile=baseline ! "
+                    "appsink sync=TRUE emit-signals=TRUE name=appsink-video"
+                    " audiotestsrc is-live=TRUE ! "
+                    "queue leaky=2 max-size-buffers=400 ! audioconvert ! audioresample ! opusenc ! audio/x-opus,rate=48000,channels=2 ! appsink sync=TRUE emit-signals=TRUE name=appsink-audio"
+                    ,
+
                     &error);
             }
             break;
