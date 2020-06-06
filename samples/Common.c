@@ -340,6 +340,9 @@ STATUS initializePeerConnection(PSampleConfiguration pSampleConfiguration, PRtcP
 
     MEMSET(&configuration, 0x00, SIZEOF(RtcConfiguration));
 
+    configuration.certificates[0].pCertificate = pSampleConfiguration->rtcConfig.certificates[0].pCertificate;
+    configuration.certificates[0].pPrivateKey = pSampleConfiguration->rtcConfig.certificates[0].pPrivateKey;
+
     // Set this to custom callback to enable filtering of interfaces
     configuration.kvsRtcConfiguration.iceSetInterfaceFilterFunc = NULL;
 

@@ -36,6 +36,8 @@ typedef enum {
 typedef struct __SampleStreamingSession SampleStreamingSession;
 typedef struct __SampleStreamingSession* PSampleStreamingSession;
 
+#degine CERT_COUNT 1
+
 typedef struct {
     volatile ATOMIC_BOOL appTerminateFlag;
     volatile ATOMIC_BOOL interrupted;
@@ -69,6 +71,8 @@ typedef struct {
     UINT32 streamingSessionCount;
     SignalingClientCallbacks signalingClientCallbacks;
     SignalingClientInfo clientInfo;
+
+    RtcCertificate certificates[CERT_COUNT];
 } SampleConfiguration, *PSampleConfiguration;
 
 typedef VOID (*StreamSessionShutdownCallback)(UINT64, PSampleStreamingSession);

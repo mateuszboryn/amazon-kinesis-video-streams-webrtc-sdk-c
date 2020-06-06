@@ -61,6 +61,10 @@ INT32 main(INT32 argc, CHAR *argv[])
     }
     printf("[KVS Master] KVS WebRTC initialization completed successfully\n");
 
+    printf("[KVS Master] Generating certificate...\n");
+    createCertificateAndKey(GENERATED_CERTIFICATE_BITS, &pSampleConfiguration->certificates[0].pCertificate, &pSampleConfiguration->certificates[0].pPrivateKey);
+    printf("[KVS Master] Certificate generated.\n");
+    
     pSampleConfiguration->signalingClientCallbacks.messageReceivedFn = masterMessageReceived;
 
     strcpy(pSampleConfiguration->clientInfo.clientId, SAMPLE_MASTER_CLIENT_ID);
