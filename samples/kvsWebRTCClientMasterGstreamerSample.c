@@ -156,9 +156,23 @@ PVOID sendGstreamerAudioVideo(PVOID args)
             }
             else {
                 pipeline = gst_parse_launch(
-                        "autovideosrc ! queue ! videoconvert ! video/x-raw,width=1280,height=720,framerate=[30/1,10000000/333333] ! "
-                        "x264enc bframes=0 speed-preset=veryfast bitrate=512 byte-stream=TRUE tune=zerolatency ! "
-                        "video/x-h264,stream-format=byte-stream,alignment=au,profile=baseline ! appsink sync=TRUE emit-signals=TRUE name=appsink-video",
+                        // original:
+                        // "autovideosrc ! queue ! videoconvert ! video/x-raw,width=1280,height=720,framerate=[30/1,10000000/333333] ! "
+                        // "x264enc bframes=0 speed-preset=veryfast bitrate=512 byte-stream=TRUE tune=zerolatency ! "
+                        // "video/x-h264,stream-format=byte-stream,alignment=au,profile=baseline ! appsink sync=TRUE emit-signals=TRUE name=appsink-video",
+                        
+                        // old (mine):
+                        // "v4l2src device=/dev/video0 ! video/x-raw,width=640,height=480,framerate=30/1 ! omxh264enc ! video/x-h264,width=640,height=480 ! "
+                        // "appsink sync=TRUE emit-signals=TRUE name=appsink-video",
+
+                        // new (from KVS producer):
+                        "v4l2src do-timestamp=TRUE device=/dev/video0 ! videoconvert ! video/x-raw,format=I420,width=640,height=480,framerate=30/1 ! "
+                        "omxh264enc control-rate=1 periodicty-idr=45 inline-header=FALSE ! h264parse ! "
+                        // "video/x-h264,stream-format=byte-stream,alignment=au,width=640,height=480,framerate=30/1,profile=baseline ! "
+                        "video/x-h264,stream-format=byte-stream,alignment=au,profile=baseline ! "
+                        "appsink sync=TRUE emit-signals=TRUE name=appsink-video",
+
+
                         &error);
             }
             break;
