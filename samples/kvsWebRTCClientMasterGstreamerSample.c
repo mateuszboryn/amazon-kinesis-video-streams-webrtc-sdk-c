@@ -167,7 +167,7 @@ PVOID sendGstreamerAudioVideo(PVOID args)
 
                         // new (from KVS producer):
                         "v4l2src do-timestamp=TRUE device=/dev/video0 ! videoconvert ! video/x-raw,format=I420,width=640,height=480,framerate=30/1 ! "
-                        "omxh264enc control-rate=1 periodicty-idr=45 inline-header=FALSE ! h264parse ! "
+                        "omxh264enc target-bitrate=300000 control-rate=1 periodicty-idr=45 inline-header=FALSE ! h264parse ! "
                         // "video/x-h264,stream-format=byte-stream,alignment=au,width=640,height=480,framerate=30/1,profile=baseline ! "
                         "video/x-h264,stream-format=byte-stream,alignment=au,profile=baseline ! "
                         "appsink sync=TRUE emit-signals=TRUE name=appsink-video",
