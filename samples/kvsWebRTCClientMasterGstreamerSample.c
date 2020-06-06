@@ -205,7 +205,7 @@ PVOID sendGstreamerAudioVideo(PVOID args)
                     // " audiotestsrc is-live=TRUE ! queue leaky=2 max-size-buffers=400 ! audioconvert ! audioresample ! opusenc ! audio/x-opus,rate=48000,channels=2 ! appsink sync=TRUE emit-signals=TRUE name=appsink-audio"
 
 
-                    "autovideosrc ! queue ! videoconvert ! video/x-raw,width=640,height=480,framerate=[25/1] ! "
+                    "autovideosrc ! queue ! videoconvert ! video/x-raw,width=640,height=480,framerate=30/1 ! "
                     "x264enc bframes=0 speed-preset=veryfast bitrate=512 byte-stream=TRUE tune=zerolatency ! "
                     "video/x-h264,stream-format=byte-stream,alignment=au,profile=baseline ! appsink sync=TRUE emit-signals=TRUE name=appsink-video "
                     " audiotestsrc is-live=TRUE ! queue leaky=2 max-size-buffers=400 ! audioconvert ! audioresample ! opusenc ! audio/x-opus,rate=48000,channels=2 ! appsink sync=TRUE emit-signals=TRUE name=appsink-audio"
