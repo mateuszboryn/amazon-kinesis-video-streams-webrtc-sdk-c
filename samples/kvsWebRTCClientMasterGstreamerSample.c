@@ -205,10 +205,19 @@ PVOID sendGstreamerAudioVideo(PVOID args)
                     // " audiotestsrc is-live=TRUE ! queue leaky=2 max-size-buffers=400 ! audioconvert ! audioresample ! opusenc ! audio/x-opus,rate=48000,channels=2 ! appsink sync=TRUE emit-signals=TRUE name=appsink-audio"
 
 
-                    "autovideosrc ! queue ! videoconvert ! video/x-raw,width=640,height=480,framerate=30/1 ! "
-                    "x264enc bframes=0 speed-preset=veryfast bitrate=512 byte-stream=TRUE tune=zerolatency ! "
+                    // THIS WORKS, but CPU usage is 40%. In kvs cpp-sdk example, CPU usage is below 5%.
+                    // "autovideosrc ! queue ! videoconvert ! video/x-raw,width=640,height=480,framerate=30/1 ! "
+                    // "x264enc bframes=0 speed-preset=veryfast bitrate=512 byte-stream=TRUE tune=zerolatency ! "
+                    // "video/x-h264,stream-format=byte-stream,alignment=au,profile=baseline ! appsink sync=TRUE emit-signals=TRUE name=appsink-video "
+                    // " audiotestsrc is-live=TRUE ! queue leaky=2 max-size-buffers=400 ! audioconvert ! audioresample ! opusenc ! audio/x-opus,rate=48000,channels=2 ! appsink sync=TRUE emit-signals=TRUE name=appsink-audio"
+
+
+
+                    // this is base pipeline for KVS: v4l2src device=/dev/video0 ! videoconvert ! video/x-raw,width=640,height=480,framerate=30/1,format=I420 ! omxh264enc periodicty-idr=45 inline-header=FALSE ! h264parse ! video/x-h264,stream-format=avc,alignment=au,profile=baseline ! kvssink
+                    "v4l2src device=/dev/video0 ! videoconvert ! video/x-raw,width=640,height=480,framerate=30/1,format=I420 ! "
+                    "omxh264enc target-bitrate=300000 control-rate=1 b-frames=0 periodicty-idr=45 inline-header=FALSE ! "
                     "video/x-h264,stream-format=byte-stream,alignment=au,profile=baseline ! appsink sync=TRUE emit-signals=TRUE name=appsink-video "
-                    " audiotestsrc is-live=TRUE ! queue leaky=2 max-size-buffers=400 ! audioconvert ! audioresample ! opusenc ! audio/x-opus,rate=48000,channels=2 ! appsink sync=TRUE emit-signals=TRUE name=appsink-audio"
+                    " audiotestsrc is-live=TRUE ! queue leaky=2 max-size-buffers=400 ! audioconvert ! audioresample ! opusenc ! audio/x-opus,rate=8000,channels=2 ! appsink sync=TRUE emit-signals=TRUE name=appsink-audio"
                     
                     ,
 
