@@ -205,7 +205,7 @@ PVOID sendGstreamerAudioVideo(PVOID args)
                     // " audiotestsrc is-live=TRUE ! queue leaky=2 max-size-buffers=400 ! audioconvert ! audioresample ! opusenc ! audio/x-opus,rate=48000,channels=2 ! appsink sync=TRUE emit-signals=TRUE name=appsink-audio"
 
 
-                    // THIS WORKS, but CPU usage is 40%. In kvs cpp-sdk example, CPU usage is below 5%.
+                    // THIS WORKS, but CPU usage is 40% and CPU temperature is about 75*C . In kvs cpp-sdk example which uses omxh264enc, CPU usage is below 5%.
                     // "autovideosrc ! queue ! videoconvert ! video/x-raw,width=640,height=480,framerate=30/1 ! "
                     // "x264enc bframes=0 speed-preset=veryfast bitrate=512 byte-stream=TRUE tune=zerolatency ! "
                     // "video/x-h264,stream-format=byte-stream,alignment=au,profile=baseline ! appsink sync=TRUE emit-signals=TRUE name=appsink-video "
@@ -214,6 +214,8 @@ PVOID sendGstreamerAudioVideo(PVOID args)
 
 
                     // this is base pipeline for KVS: v4l2src device=/dev/video0 ! videoconvert ! video/x-raw,width=640,height=480,framerate=30/1,format=I420 ! omxh264enc periodicty-idr=45 inline-header=FALSE ! h264parse ! video/x-h264,stream-format=avc,alignment=au,profile=baseline ! kvssink
+                    // THE BELOW PIPELINE WORKS GOOD: omxh264enc in raspberry pi runs encoding in GPU (so we have CPU usage is below 5%) and also temperature is about 52*C.
+                    // without h264parse with explicit option set: config-interval=-1, the client will not be able to detect resolution and codec (which results in no image, even though data stream is being transmitted and received)
                     "v4l2src device=/dev/video0 ! queue ! videoconvert ! video/x-raw,width=640,height=480,framerate=30/1,format=I420 ! "
                     "omxh264enc target-bitrate=524288 control-rate=1 b-frames=0 periodicity-idr=30 inline-header=TRUE ! "
                     " h264parse config-interval=-1 ! "
