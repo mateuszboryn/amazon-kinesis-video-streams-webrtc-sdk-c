@@ -214,8 +214,9 @@ PVOID sendGstreamerAudioVideo(PVOID args)
 
 
                     // this is base pipeline for KVS: v4l2src device=/dev/video0 ! videoconvert ! video/x-raw,width=640,height=480,framerate=30/1,format=I420 ! omxh264enc periodicty-idr=45 inline-header=FALSE ! h264parse ! video/x-h264,stream-format=avc,alignment=au,profile=baseline ! kvssink
-                    "v4l2src device=/dev/video0 ! videoconvert ! video/x-raw,width=640,height=480,framerate=30/1,format=I420 ! "
-                    "omxh264enc target-bitrate=300000 control-rate=1 b-frames=0 periodicty-idr=45 inline-header=FALSE ! "
+                    "v4l2src device=/dev/video0 ! queue ! videoconvert ! video/x-raw,width=640,height=480,framerate=30/1,format=I420 ! "
+                    "omxh264enc target-bitrate=524288 control-rate=1 b-frames=0 periodicity-idr=30 inline-header=TRUE ! "
+                    " h264parse config-interval=-1 ! "
                     "video/x-h264,stream-format=byte-stream,alignment=au,profile=baseline ! appsink sync=TRUE emit-signals=TRUE name=appsink-video "
                     " audiotestsrc is-live=TRUE ! queue leaky=2 max-size-buffers=400 ! audioconvert ! audioresample ! opusenc ! audio/x-opus,rate=8000,channels=2 ! appsink sync=TRUE emit-signals=TRUE name=appsink-audio"
                     
