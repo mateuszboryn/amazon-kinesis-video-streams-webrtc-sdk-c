@@ -174,11 +174,20 @@ PVOID sendGstreamerAudioVideo(PVOID args)
 
 
                         // new (from KVS producer):
-                        "v4l2src do-timestamp=TRUE device=/dev/video0 ! videoconvert ! video/x-raw,format=I420,width=640,height=480,framerate=30/1 ! "
-                        "omxh264enc target-bitrate=300000 control-rate=1 periodicty-idr=45 inline-header=FALSE ! h264parse ! "
-                        "video/x-h264,stream-format=byte-stream,alignment=au,width=640,height=480,framerate=30/1,profile=baseline ! "
-                        "appsink sync=TRUE emit-signals=TRUE name=appsink-video",
-                        &error);
+                        // "v4l2src do-timestamp=TRUE device=/dev/video0 ! videoconvert ! video/x-raw,format=I420,width=640,height=480,framerate=30/1 ! "
+                        // "omxh264enc target-bitrate=300000 control-rate=1 periodicty-idr=45 inline-header=FALSE ! h264parse ! "
+                        // "video/x-h264,stream-format=byte-stream,alignment=au,width=640,height=480,framerate=30/1,profile=baseline ! "
+                        // "appsink sync=TRUE emit-signals=TRUE name=appsink-video"
+                        
+                        // this is base pipeline for KVS: v4l2src device=/dev/video0 ! videoconvert ! video/x-raw,width=640,height=480,framerate=30/1,format=I420 ! omxh264enc periodicty-idr=45 inline-header=FALSE ! h264parse ! video/x-h264,stream-format=avc,alignment=au,profile=baseline ! kvssink
+                        // THE BELOW PIPELINE WORKS GOOD: omxh264enc in raspberry pi runs encoding in GPU (so we have CPU usage is below 5%) and also temperature is about 52*C.
+                        // without h264parse with explicit option set: config-interval=-1, the client will not be able to detect resolution and codec (which results in no image, even though data stream is being transmitted and received)
+                        "v4l2src device=/dev/video0 ! queue ! videoconvert ! video/x-raw,width=640,height=480,framerate=30/1,format=I420 ! "
+                        "omxh264enc target-bitrate=524288 control-rate=1 b-frames=0 periodicity-idr=30 inline-header=TRUE ! "
+                        " h264parse config-interval=-1 ! "
+                        "video/x-h264,stream-format=byte-stream,alignment=au,profile=baseline ! appsink sync=TRUE emit-signals=TRUE name=appsink-video "
+                        
+                        , &error);
             }
             break;
 
