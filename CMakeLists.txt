@@ -70,12 +70,11 @@ if(BUILD_DEPENDENCIES)
   build_dependency(srtp ${BUILD_ARGS})
 
   build_dependency(usrsctp)
-  build_dependency(jsmn)
   if(BUILD_TEST)
    build_dependency(gtest)
   endif()
 
-  build_dependency(kvspic)
+  # building kvsCommonLws also builds kvspic
   build_dependency(kvsCommonLws)
 
   message(STATUS "Finished building dependencies.")
@@ -94,9 +93,9 @@ else()
 endif()
 
 if (WIN32)
-    SET(LIBWEBSOCKET_LIBRARIES "websockets.lib")
+  SET(LIBWEBSOCKETS_LIBRARIES "websockets.lib")
 else()
-    pkg_check_modules(LIBWEBSOCKET REQUIRED libwebsockets)
+  pkg_check_modules(LIBWEBSOCKETS REQUIRED libwebsockets)
 endif()
 
 # usrsctp dont support pkgconfig yet
@@ -106,16 +105,11 @@ find_library(
   PATHS ${OPEN_SRC_INSTALL_PREFIX}/lib)
 
 set(OPEN_SRC_INCLUDE_DIRS ${LIBSRTP_INCLUDE_DIRS} ${OPENSSL_INCLUDE_DIR}
-                          ${CURL_INCLUDE_DIRS} ${LIBWEBSOCKET_INCLUDE_DIRS})
+                          ${CURL_INCLUDE_DIRS} ${LIBWEBSOCKETS_INCLUDE_DIRS})
 
 link_directories(${LIBSRTP_LIBRARY_DIRS})
-link_directories(${LIBWEBSOCKET_LIBRARY_DIRS})
+link_directories(${LIBWEBSOCKETS_LIBRARY_DIRS})
 link_directories(${OPEN_SRC_INSTALL_PREFIX}/lib)
-
-find_library(
-  Jsmn
-  NAMES jsmn REQUIRED
-  PATHS ${OPEN_SRC_INSTALL_PREFIX}/lib)
 
 pkg_check_modules(GST gstreamer-1.0)
 if(GST_FOUND)
@@ -201,8 +195,6 @@ file(
 
 file(GLOB WEBRTC_SIGNALING_CLIENT_SOURCE_FILES "src/source/Signaling/*.c")
 
-file(GLOB PIC_HEADERS "${KINESIS_VIDEO_PIC_SRC}/src/*/include")
-
 file(COPY "${CMAKE_CURRENT_SOURCE_DIR}/samples/opusSampleFrames" DESTINATION .)
 file(COPY "${CMAKE_CURRENT_SOURCE_DIR}/samples/h264SampleFrames" DESTINATION .)
 
@@ -210,7 +202,6 @@ include_directories(${OPEN_SRC_INCLUDE_DIRS})
 include_directories(${OPEN_SRC_INSTALL_PREFIX}/include)
 include_directories(${KINESIS_VIDEO_WEBRTC_CLIENT_SRC}/src/include)
 include_directories(${KINESIS_VIDEO_WEBRTC_CLIENT_SRC}/src/ice)
-include_directories(${KINESIS_VIDEO_PRODUCER_C_SRC}/src/include)
 
 add_library(kvsWebrtcClient ${LINKAGE} ${WEBRTC_CLIENT_SOURCE_FILES})
 
@@ -221,7 +212,6 @@ target_link_libraries(
           ${OPENSSL_SSL_LIBRARY}
           ${OPENSSL_CRYPTO_LIBRARY}
           ${SRTP_LIBRARIES}
-          ${Jsmn}
           ${Usrsctp}
           ${EXTRA_DEPS})
 
@@ -231,9 +221,8 @@ target_link_libraries(
   kvsWebrtcSignalingClient
   PRIVATE kvspicUtils
           kvspicState
-          ${LIBWEBSOCKET_LIBRARIES}
+          ${LIBWEBSOCKETS_LIBRARIES}
           ${EXTRA_DEPS}
-          ${Jsmn}
           ${OPENSSL_SSL_LIBRARY}
           ${OPENSSL_CRYPTO_LIBRARY}
   PUBLIC kvsCommonLws)
@@ -253,6 +242,11 @@ add_executable(
   ${KINESIS_VIDEO_WEBRTC_CLIENT_SRC}/samples/Common.c
   ${KINESIS_VIDEO_WEBRTC_CLIENT_SRC}/samples/kvsWebRTCClientViewer.c)
 target_link_libraries(kvsWebrtcClientViewer kvsWebrtcClient kvsWebrtcSignalingClient kvspicUtils)
+
+add_executable(
+        discoverNatBehavior
+        ${KINESIS_VIDEO_WEBRTC_CLIENT_SRC}/samples/discoverNatBehavior.c)
+target_link_libraries(discoverNatBehavior kvsWebrtcClient)
 
 if(COMPILER_WARNINGS)
   target_compile_options(kvsWebrtcClient PUBLIC -Wall -Werror -pedantic -Wextra -Wno-unknown-warning-option)
