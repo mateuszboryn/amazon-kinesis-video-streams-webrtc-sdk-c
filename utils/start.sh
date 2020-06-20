@@ -1,5 +1,11 @@
-export AWS_DEFAULT_REGION=eu-west-1
-export AWS_ACCESS_KEY_ID=
-export AWS_SECRET_ACCESS_KEY=
+#!/bin/bash
+
+set -e
+
+cd "$(dirname "$0")"
+
+source creds.sh
+
+cd ../build/
 
 ./kvsWebrtcClientMaster test
