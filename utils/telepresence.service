@@ -1,0 +1,16 @@
+[Unit]
+Description=KVS WebRTC master
+Requires=network.target
+After=network.target
+
+[Service]
+Type=simple
+Restart=always
+RestartSec=3
+User=pi
+ExecStart=/home/pi/amazon-kinesis-video-streams-webrtc-sdk-c/utils/start-gs.sh
+
+[Install]
+WantedBy=multi-user.target
+
+
