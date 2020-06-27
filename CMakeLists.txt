@@ -228,6 +228,20 @@ target_link_libraries(
           ${OPENSSL_CRYPTO_LIBRARY}
   PUBLIC kvsCommonLws)
 
+install(TARGETS kvsWebrtcClient kvsWebrtcSignalingClient
+  LIBRARY DESTINATION lib
+  ARCHIVE DESTINATION lib/static
+  )
+
+install(DIRECTORY 
+    ${OPEN_SRC_INSTALL_PREFIX}/include
+    ${OPEN_SRC_INCLUDE_DIRS}
+    ${OPEN_SRC_INSTALL_PREFIX}/include
+    ${KINESIS_VIDEO_WEBRTC_CLIENT_SRC}/src/include
+    ${KINESIS_VIDEO_WEBRTC_CLIENT_SRC}/src/ice
+  DESTINATION include
+  )
+
 if (WIN32)
   target_link_libraries(kvsWebrtcClient PRIVATE "Ws2_32" "iphlpapi")
 endif()
