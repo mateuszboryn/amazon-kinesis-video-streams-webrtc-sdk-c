@@ -265,3 +265,29 @@ endif()
 if(BUILD_TEST)
   add_subdirectory(tst)
 endif()
+
+
+install(TARGETS kvsWebrtcClient kvsWebrtcSignalingClient kvsCommonLws kvspicUtils
+  LIBRARY DESTINATION lib
+  ARCHIVE DESTINATION lib
+  )
+
+install(DIRECTORY 
+    ${OPEN_SRC_INSTALL_PREFIX}/include/
+    ${KINESIS_VIDEO_PIC_SRC}/src/client/include/
+    ${KINESIS_VIDEO_PIC_SRC}/src/common/include/
+    ${KINESIS_VIDEO_PIC_SRC}/src/heap/include/
+    ${KINESIS_VIDEO_PIC_SRC}/src/mkvgen/include/
+    ${KINESIS_VIDEO_PIC_SRC}/src/state/include/
+    ${KINESIS_VIDEO_PIC_SRC}/src/trace/include/
+    ${KINESIS_VIDEO_PIC_SRC}/src/utils/include/
+    ${KINESIS_VIDEO_PIC_SRC}/src/view/include/
+    ${KINESIS_VIDEO_PRODUCER_C_SRC}/src/include/
+    ${KINESIS_VIDEO_WEBRTC_CLIENT_SRC}/src/include/
+  DESTINATION include
+  )
+
+install(DIRECTORY 
+    ${OPEN_SRC_INSTALL_PREFIX}/lib/
+  DESTINATION lib
+  )
