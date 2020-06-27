@@ -230,19 +230,17 @@ target_link_libraries(
 
 install(TARGETS kvsWebrtcClient kvsWebrtcSignalingClient
   LIBRARY DESTINATION lib
-  ARCHIVE DESTINATION lib/static
   )
 
 install(DIRECTORY 
-    ${OPEN_SRC_INSTALL_PREFIX}/include/
     ${KINESIS_VIDEO_WEBRTC_CLIENT_SRC}/src/include/
   DESTINATION include
   )
 
-install(DIRECTORY 
-    ${OPEN_SRC_INSTALL_PREFIX}/lib/
-  DESTINATION lib
-  )
+#install(DIRECTORY 
+#    ${OPEN_SRC_INSTALL_PREFIX}/lib/
+#  DESTINATION lib
+#  )
 
 if (WIN32)
   target_link_libraries(kvsWebrtcClient PRIVATE "Ws2_32" "iphlpapi")
