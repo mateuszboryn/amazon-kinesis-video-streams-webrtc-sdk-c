@@ -234,10 +234,10 @@ install(TARGETS kvsWebrtcClient kvsWebrtcSignalingClient
   )
 
 install(DIRECTORY 
-    ${OPEN_SRC_INSTALL_PREFIX}/include
+    ${OPEN_SRC_INSTALL_PREFIX}/include/
     ${OPEN_SRC_INCLUDE_DIRS}
-    ${OPEN_SRC_INSTALL_PREFIX}/include
-    ${KINESIS_VIDEO_WEBRTC_CLIENT_SRC}/src/include
+    ${OPEN_SRC_INSTALL_PREFIX}/include/
+    ${KINESIS_VIDEO_WEBRTC_CLIENT_SRC}/src/include/
 #    ${KINESIS_VIDEO_WEBRTC_CLIENT_SRC}/src/ice   - not needed?
   DESTINATION include
   )
