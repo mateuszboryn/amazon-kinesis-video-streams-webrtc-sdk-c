@@ -273,12 +273,6 @@ install(TARGETS kvsWebrtcClient kvsWebrtcSignalingClient
   )
 
 install(DIRECTORY 
-    ${OPEN_SRC_INSTALL_PREFIX}/include/
     ${KINESIS_VIDEO_WEBRTC_CLIENT_SRC}/src/include/
   DESTINATION include
-  )
-
-install(DIRECTORY 
-    ${OPEN_SRC_INSTALL_PREFIX}/lib/
-  DESTINATION lib
   )
