@@ -221,11 +221,13 @@ target_link_libraries(
   kvsWebrtcSignalingClient
   PRIVATE kvspicUtils
           kvspicState
-          ${LIBWEBSOCKETS_LIBRARIES}
           ${EXTRA_DEPS}
           ${OPENSSL_SSL_LIBRARY}
           ${OPENSSL_CRYPTO_LIBRARY}
-  PUBLIC kvsCommonLws)
+  PUBLIC 
+          ${LIBWEBSOCKETS_LIBRARIES}
+          kvsCommonLws
+	  )
 
 if (WIN32)
   target_link_libraries(kvsWebrtcClient PRIVATE "Ws2_32" "iphlpapi")
