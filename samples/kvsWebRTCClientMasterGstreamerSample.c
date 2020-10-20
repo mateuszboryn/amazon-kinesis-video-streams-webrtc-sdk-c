@@ -155,9 +155,13 @@ PVOID sendGstreamerAudioVideo(PVOID args)
                     &error);
             } else {
                 pipeline = gst_parse_launch(
-                    "autovideosrc ! queue ! videoconvert ! video/x-raw,width=1280,height=720,framerate=[30/1,10000000/333333] ! "
-                    "x264enc bframes=0 speed-preset=veryfast bitrate=512 byte-stream=TRUE tune=zerolatency ! "
-                    "video/x-h264,stream-format=byte-stream,alignment=au,profile=baseline ! appsink sync=TRUE emit-signals=TRUE name=appsink-video",
+                    //"autovideosrc ! queue ! videoconvert ! video/x-raw,width=1280,height=720,framerate=[30/1,10000000/333333] ! "
+                    //"x264enc bframes=0 speed-preset=veryfast bitrate=512 byte-stream=TRUE tune=zerolatency ! "
+                    //"video/x-h264,stream-format=byte-stream,alignment=au,profile=baseline ! appsink sync=TRUE emit-signals=TRUE name=appsink-video",
+		    "v4l2src device=/dev/video0 ! queue ! videoconvert ! video/x-raw,width=640,height=480,framerate=30/1,format=I420 ! "
+                    "omxh264enc target-bitrate=524288 control-rate=1 b-frames=0 periodicity-idr=30 inline-header=TRUE ! "
+                    " h264parse config-interval=-1 ! "
+                    "video/x-h264,stream-format=byte-stream,alignment=au,profile=baseline ! appsink sync=TRUE emit-signals=TRUE name=appsink-video ",
                     &error);
             }
             break;
@@ -173,12 +177,18 @@ PVOID sendGstreamerAudioVideo(PVOID args)
                                             &error);
             } else {
                 pipeline =
-                    gst_parse_launch("autovideosrc ! queue ! videoconvert ! video/x-raw,width=1280,height=720,framerate=[30/1,10000000/333333] ! "
-                                     "x264enc bframes=0 speed-preset=veryfast bitrate=512 byte-stream=TRUE tune=zerolatency ! "
-                                     "video/x-h264,stream-format=byte-stream,alignment=au,profile=baseline ! appsink sync=TRUE emit-signals=TRUE "
-                                     "name=appsink-video autoaudiosrc ! "
-                                     "queue leaky=2 max-size-buffers=400 ! audioconvert ! audioresample ! opusenc ! "
-                                     "audio/x-opus,rate=48000,channels=2 ! appsink sync=TRUE emit-signals=TRUE name=appsink-audio",
+                    gst_parse_launch(
+				    //"autovideosrc ! queue ! videoconvert ! video/x-raw,width=1280,height=720,framerate=[30/1,10000000/333333] ! "
+                                     //"x264enc bframes=0 speed-preset=veryfast bitrate=512 byte-stream=TRUE tune=zerolatency ! "
+                                     //"video/x-h264,stream-format=byte-stream,alignment=au,profile=baseline ! appsink sync=TRUE emit-signals=TRUE "
+                                     //"name=appsink-video autoaudiosrc ! "
+                                     //"queue leaky=2 max-size-buffers=400 ! audioconvert ! audioresample ! opusenc ! "
+                                     //"audio/x-opus,rate=48000,channels=2 ! appsink sync=TRUE emit-signals=TRUE name=appsink-audio",
+				     "v4l2src device=/dev/video0 ! queue ! videoconvert ! video/x-raw,width=640,height=480,framerate=30/1,format=I420 ! "
+                    "omxh264enc target-bitrate=524288 control-rate=1 b-frames=0 periodicity-idr=30 inline-header=TRUE ! "
+                    " h264parse config-interval=-1 ! "
+                    "video/x-h264,stream-format=byte-stream,alignment=au,profile=baseline ! appsink sync=TRUE emit-signals=TRUE name=appsink-video "
+                    " audiotestsrc is-live=TRUE ! queue leaky=2 max-size-buffers=400 ! audioconvert ! audioresample ! opusenc ! audio/x-opus,rate=8000,channels=2 ! appsink sync=TRUE emit-signals=TRUE name=appsink-audio",
                                      &error);
             }
             break;
