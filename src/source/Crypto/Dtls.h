@@ -18,7 +18,8 @@ extern "C" {
 
 #define GENERATED_CERTIFICATE_MAX_SIZE 4096
 #define GENERATED_CERTIFICATE_BITS     2048
-#define GENERATED_CERTIFICATE_SERIAL   1
+#define DTLS_CERT_MIN_SERIAL_NUM_SIZE  8
+#define DTLS_CERT_MAX_SERIAL_NUM_SIZE  20
 #define GENERATED_CERTIFICATE_DAYS     365
 #define GENERATED_CERTIFICATE_NAME     "KVS-WebRTC-Client"
 #define KEYING_EXTRACTOR_LABEL         "EXTRACTOR-dtls_srtp"
@@ -35,11 +36,11 @@ extern "C" {
 #define HUNDREDS_OF_NANOS_IN_A_DAY (HUNDREDS_OF_NANOS_IN_AN_HOUR * 24LL)
 
 typedef enum {
-    NEW,
-    CONNECTING, /* DTLS is in the process of negotiating a secure connection and verifying the remote fingerprint. */
-    CONNECTED,  /* DTLS has completed negotiation of a secure connection and verified the remote fingerprint. */
-    CLOSED,     /* The transport has been closed intentionally as the result of receipt of a close_notify alert */
-    FAILED,     /* The transport has failed as the result of an error */
+    RTC_DTLS_TRANSPORT_STATE_NEW,
+    RTC_DTLS_TRANSPORT_STATE_CONNECTING, /* DTLS is in the process of negotiating a secure connection and verifying the remote fingerprint. */
+    RTC_DTLS_TRANSPORT_STATE_CONNECTED,  /* DTLS has completed negotiation of a secure connection and verified the remote fingerprint. */
+    RTC_DTLS_TRANSPORT_STATE_CLOSED,     /* The transport has been closed intentionally as the result of receipt of a close_notify alert */
+    RTC_DTLS_TRANSPORT_STATE_FAILED,     /* The transport has failed as the result of an error */
 } RTC_DTLS_TRANSPORT_STATE;
 
 /* Callback that is fired when Dtls Server wishes to send packet */
@@ -170,6 +171,8 @@ STATUS dtlsSessionOnStateChange(PDtlsSession, UINT64, DtlsSessionOnStateChange);
 /******** Internal Functions **********/
 STATUS dtlsValidateRtcCertificates(PRtcCertificate, PUINT32);
 STATUS dtlsSessionChangeState(PDtlsSession, RTC_DTLS_TRANSPORT_STATE);
+
+STATUS dtlsFillPseudoRandomBits(PBYTE, UINT32);
 
 #ifdef KVS_USE_OPENSSL
 STATUS dtlsCheckOutgoingDataBuffer(PDtlsSession);

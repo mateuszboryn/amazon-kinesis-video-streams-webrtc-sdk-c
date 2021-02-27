@@ -58,6 +58,7 @@ STATUS allocateSctp(PKvsPeerConnection pKvsPeerConnection)
     SctpSessionCallbacks sctpSessionCallbacks;
     AllocateSctpSortDataChannelsData data;
     UINT32 currentDataChannelId = 0;
+    UINT64 hashValue = 0;
     PKvsDataChannel pKvsDataChannel = NULL;
 
     CHK(pKvsPeerConnection != NULL, STATUS_NULL_ARG);
@@ -82,11 +83,21 @@ STATUS allocateSctp(PKvsPeerConnection pKvsPeerConnection)
     CHK_STATUS(createSctpSession(&sctpSessionCallbacks, &(pKvsPeerConnection->pSctpSession)));
 
     for (; currentDataChannelId < data.currentDataChannelId; currentDataChannelId += 2) {
-        CHK_STATUS(hashTableGet(pKvsPeerConnection->pDataChannels, currentDataChannelId, (PUINT64) &pKvsDataChannel));
+        pKvsDataChannel = NULL;
+        retStatus = hashTableGet(pKvsPeerConnection->pDataChannels, currentDataChannelId, &hashValue);
+        pKvsDataChannel = (PKvsDataChannel) hashValue;
+        if (retStatus == STATUS_SUCCESS || retStatus == STATUS_HASH_KEY_NOT_PRESENT) {
+            retStatus = STATUS_SUCCESS;
+        } else {
+            CHK(FALSE, retStatus);
+        }
         CHK(pKvsDataChannel != NULL, STATUS_INTERNAL_ERROR);
         sctpSessionWriteDcep(pKvsPeerConnection->pSctpSession, currentDataChannelId, pKvsDataChannel->dataChannel.name,
                              STRLEN(pKvsDataChannel->dataChannel.name), &pKvsDataChannel->rtcDataChannelInit);
-
+        pKvsDataChannel->rtcDataChannelDiagnostics.state = RTC_DATA_CHANNEL_STATE_OPEN;
+        if (STATUS_FAILED(hashTableUpsert(pKvsPeerConnection->pDataChannels, currentDataChannelId, (UINT64) pKvsDataChannel))) {
+            DLOGW("Failed to update entry in hash table with recent changes to data channel");
+        }
         if (pKvsDataChannel->onOpen != NULL) {
             pKvsDataChannel->onOpen(pKvsDataChannel->onOpenCustomData, &pKvsDataChannel->dataChannel);
         }
@@ -129,9 +140,12 @@ VOID onInboundPacket(UINT64 customData, PBYTE buff, UINT32 buffLen)
                 CHK_STATUS(allocateSrtp(pKvsPeerConnection));
             }
 
+#ifdef ENABLE_DATA_CHANNEL
             if (pKvsPeerConnection->pSctpSession == NULL) {
                 CHK_STATUS(allocateSctp(pKvsPeerConnection));
             }
+#endif
+            changePeerConnectionState(pKvsPeerConnection, RTC_PEER_CONNECTION_STATE_CONNECTED);
         }
 
     } else if ((buff[0] > 127 && buff[0] < 192) && (pKvsPeerConnection->pSrtpSession != NULL)) {
@@ -143,11 +157,6 @@ VOID onInboundPacket(UINT64 customData, PBYTE buff, UINT32 buffLen)
 
             CHK_STATUS(onRtcpPacket(pKvsPeerConnection, buff, signedBuffLen));
         } else {
-            if (STATUS_FAILED(retStatus = decryptSrtpPacket(pKvsPeerConnection->pSrtpSession, buff, &signedBuffLen))) {
-                DLOGW("decryptSrtpPacket failed with 0x%08x", retStatus);
-                CHK(FALSE, STATUS_SUCCESS);
-            }
-
             CHK_STATUS(sendPacketToRtpReceiver(pKvsPeerConnection, buff, signedBuffLen));
         }
     }
@@ -162,27 +171,56 @@ STATUS sendPacketToRtpReceiver(PKvsPeerConnection pKvsPeerConnection, PBYTE pBuf
     STATUS retStatus = STATUS_SUCCESS;
     PDoubleListNode pCurNode = NULL;
     PKvsRtpTransceiver pTransceiver;
-    UINT64 item;
+    UINT64 item, now;
     UINT32 ssrc;
     PRtpPacket pRtpPacket = NULL;
     PBYTE pPayload = NULL;
-    BOOL ownedByJitterBuffer = FALSE;
+    BOOL ownedByJitterBuffer = FALSE, discarded = FALSE;
+    UINT64 packetsReceived = 0, packetsFailedDecryption = 0, lastPacketReceivedTimestamp = 0, headerBytesReceived = 0, bytesReceived = 0,
+           packetsDiscarded = 0;
+    INT64 arrival, r_ts, transit, delta;
 
     CHK(pKvsPeerConnection != NULL && pBuffer != NULL, STATUS_NULL_ARG);
     CHK(bufferLen >= MIN_HEADER_LENGTH, STATUS_INVALID_ARG);
 
     ssrc = getInt32(*(PUINT32)(pBuffer + SSRC_OFFSET));
 
-    CHK_STATUS(doubleListGetHeadNode(pKvsPeerConnection->pTransceievers, &pCurNode));
+    CHK_STATUS(doubleListGetHeadNode(pKvsPeerConnection->pTransceivers, &pCurNode));
     while (pCurNode != NULL) {
         CHK_STATUS(doubleListGetNodeData(pCurNode, &item));
         pTransceiver = (PKvsRtpTransceiver) item;
 
         if (pTransceiver->jitterBufferSsrc == ssrc) {
+            packetsReceived++;
+            if (STATUS_FAILED(retStatus = decryptSrtpPacket(pKvsPeerConnection->pSrtpSession, pBuffer, (PINT32) &bufferLen))) {
+                DLOGW("decryptSrtpPacket failed with 0x%08x", retStatus);
+                packetsFailedDecryption++;
+                CHK(FALSE, STATUS_SUCCESS);
+            }
+            now = GETTIME();
             CHK(NULL != (pPayload = (PBYTE) MEMALLOC(bufferLen)), STATUS_NOT_ENOUGH_MEMORY);
             MEMCPY(pPayload, pBuffer, bufferLen);
             CHK_STATUS(createRtpPacketFromBytes(pPayload, bufferLen, &pRtpPacket));
-            CHK_STATUS(jitterBufferPush(pTransceiver->pJitterBuffer, pRtpPacket));
+            pRtpPacket->receivedTime = now;
+
+            // https://tools.ietf.org/html/rfc3550#section-6.4.1
+            // https://tools.ietf.org/html/rfc3550#appendix-A.8
+            // interarrival jitter
+            // arrival, the current time in the same units.
+            // r_ts, the timestamp from   the incoming packet
+            arrival = KVS_CONVERT_TIMESCALE(now, HUNDREDS_OF_NANOS_IN_A_SECOND, pTransceiver->pJitterBuffer->clockRate);
+            r_ts = pRtpPacket->header.timestamp;
+            transit = arrival - r_ts;
+            delta = transit - pTransceiver->pJitterBuffer->transit;
+            pTransceiver->pJitterBuffer->transit = transit;
+            pTransceiver->pJitterBuffer->jitter += (1. / 16.) * ((DOUBLE) ABS(delta) - pTransceiver->pJitterBuffer->jitter);
+            CHK_STATUS(jitterBufferPush(pTransceiver->pJitterBuffer, pRtpPacket, &discarded));
+            if (discarded) {
+                packetsDiscarded++;
+            }
+            lastPacketReceivedTimestamp = KVS_CONVERT_TIMESCALE(now, HUNDREDS_OF_NANOS_IN_A_SECOND, 1000);
+            headerBytesReceived += RTP_HEADER_LEN(pRtpPacket);
+            bytesReceived += pRtpPacket->rawPacketLength - RTP_HEADER_LEN(pRtpPacket);
             ownedByJitterBuffer = TRUE;
             CHK(FALSE, STATUS_SUCCESS);
         }
@@ -192,6 +230,17 @@ STATUS sendPacketToRtpReceiver(PKvsPeerConnection pKvsPeerConnection, PBYTE pBuf
     DLOGW("No transceiver to handle inbound ssrc %u", ssrc);
 
 CleanUp:
+    if (packetsReceived > 0) {
+        MUTEX_LOCK(pTransceiver->statsLock);
+        pTransceiver->inboundStats.received.packetsReceived += packetsReceived;
+        pTransceiver->inboundStats.packetsFailedDecryption += packetsFailedDecryption;
+        pTransceiver->inboundStats.lastPacketReceivedTimestamp = lastPacketReceivedTimestamp;
+        pTransceiver->inboundStats.headerBytesReceived += headerBytesReceived;
+        pTransceiver->inboundStats.bytesReceived += bytesReceived;
+        pTransceiver->inboundStats.received.jitter = pTransceiver->pJitterBuffer->jitter / pTransceiver->pJitterBuffer->clockRate;
+        pTransceiver->inboundStats.received.packetsDiscarded = packetsDiscarded;
+        MUTEX_UNLOCK(pTransceiver->statsLock);
+    }
     if (!ownedByJitterBuffer) {
         SAFE_MEMFREE(pPayload);
         freeRtpPacket(&pRtpPacket);
@@ -204,6 +253,8 @@ STATUS changePeerConnectionState(PKvsPeerConnection pKvsPeerConnection, RTC_PEER
 {
     STATUS retStatus = STATUS_SUCCESS;
     BOOL locked = FALSE;
+    RtcOnConnectionStateChange onConnectionStateChange = NULL;
+    UINT64 customData = 0;
     CHK(pKvsPeerConnection != NULL, STATUS_NULL_ARG);
 
     MUTEX_LOCK(pKvsPeerConnection->peerConnectionObjLock);
@@ -215,11 +266,13 @@ STATUS changePeerConnectionState(PKvsPeerConnection pKvsPeerConnection, RTC_PEER
         retStatus);
 
     pKvsPeerConnection->connectionState = newState;
+    onConnectionStateChange = pKvsPeerConnection->onConnectionStateChange;
+    customData = pKvsPeerConnection->onConnectionStateChangeCustomData;
     MUTEX_UNLOCK(pKvsPeerConnection->peerConnectionObjLock);
     locked = FALSE;
 
-    if (pKvsPeerConnection->onConnectionStateChange != NULL) {
-        pKvsPeerConnection->onConnectionStateChange(pKvsPeerConnection->onConnectionStateChangeCustomData, newState);
+    if (onConnectionStateChange != NULL) {
+        onConnectionStateChange(customData, newState);
     }
 
 CleanUp:
@@ -238,12 +291,29 @@ STATUS onFrameReadyFunc(UINT64 customData, UINT16 startIndex, UINT16 endIndex, U
     PKvsRtpTransceiver pTransceiver = (PKvsRtpTransceiver) customData;
     PRtpPacket pPacket = NULL;
     Frame frame;
-    UINT32 filledSize = 0;
+    UINT64 hashValue;
+    UINT32 filledSize = 0, index;
 
     CHK(pTransceiver != NULL, STATUS_NULL_ARG);
 
-    pPacket = pTransceiver->pJitterBuffer->pktBuffer[startIndex];
+    // TODO: handle multi-packet frames
+    retStatus = hashTableGet(pTransceiver->pJitterBuffer->pPkgBufferHashTable, startIndex, &hashValue);
+    pPacket = (PRtpPacket) hashValue;
+    if (retStatus == STATUS_SUCCESS || retStatus == STATUS_HASH_KEY_NOT_PRESENT) {
+        retStatus = STATUS_SUCCESS;
+    } else {
+        CHK(FALSE, retStatus);
+    }
     CHK(pPacket != NULL, STATUS_NULL_ARG);
+    MUTEX_LOCK(pTransceiver->statsLock);
+    // https://www.w3.org/TR/webrtc-stats/#dom-rtcinboundrtpstreamstats-jitterbufferdelay
+    pTransceiver->inboundStats.jitterBufferDelay += (DOUBLE)(GETTIME() - pPacket->receivedTime) / HUNDREDS_OF_NANOS_IN_A_SECOND;
+    index = pTransceiver->inboundStats.jitterBufferEmittedCount;
+    pTransceiver->inboundStats.jitterBufferEmittedCount++;
+    if (MEDIA_STREAM_TRACK_KIND_VIDEO == pTransceiver->transceiver.receiver.track.kind) {
+        pTransceiver->inboundStats.framesReceived++;
+    }
+    MUTEX_UNLOCK(pTransceiver->statsLock);
 
     if (frameSize > pTransceiver->peerFrameBufferSize) {
         MEMFREE(pTransceiver->peerFrameBuffer);
@@ -261,20 +331,45 @@ STATUS onFrameReadyFunc(UINT64 customData, UINT16 startIndex, UINT16 endIndex, U
     frame.frameData = pTransceiver->peerFrameBuffer;
     frame.size = frameSize;
     frame.duration = 0;
+    frame.index = index;
     // TODO: Fill frame flag and track id and index if we need to, currently those are not used by RtcRtpTransceiver
     if (pTransceiver->onFrame != NULL) {
         pTransceiver->onFrame(pTransceiver->onFrameCustomData, &frame);
     }
 
 CleanUp:
+    CHK_LOG_ERR(retStatus);
     return retStatus;
 }
 
-STATUS onFrameDroppedFunc(UINT64 customData, UINT32 timestamp)
+STATUS onFrameDroppedFunc(UINT64 customData, UINT16 startIndex, UINT16 endIndex, UINT32 timestamp)
 {
-    UNUSED_PARAM(customData);
+    UNUSED_PARAM(endIndex);
+    STATUS retStatus = STATUS_SUCCESS;
+    UINT64 hashValue = 0;
+    PRtpPacket pPacket = NULL;
+    PKvsRtpTransceiver pTransceiver = (PKvsRtpTransceiver) customData;
     DLOGW("Frame with timestamp %ld is dropped!", timestamp);
-    return STATUS_SUCCESS;
+    CHK(pTransceiver != NULL, STATUS_NULL_ARG);
+    retStatus = hashTableGet(pTransceiver->pJitterBuffer->pPkgBufferHashTable, startIndex, &hashValue);
+    pPacket = (PRtpPacket) hashValue;
+    if (retStatus == STATUS_SUCCESS || retStatus == STATUS_HASH_KEY_NOT_PRESENT) {
+        retStatus = STATUS_SUCCESS;
+    } else {
+        CHK(FALSE, retStatus);
+    }
+    // TODO: handle multi-packet frames
+    CHK(pPacket != NULL, STATUS_NULL_ARG);
+    MUTEX_LOCK(pTransceiver->statsLock);
+    // https://www.w3.org/TR/webrtc-stats/#dom-rtcinboundrtpstreamstats-jitterbufferdelay
+    pTransceiver->inboundStats.jitterBufferDelay += (DOUBLE)(GETTIME() - pPacket->receivedTime) / HUNDREDS_OF_NANOS_IN_A_SECOND;
+    pTransceiver->inboundStats.jitterBufferEmittedCount++;
+    pTransceiver->inboundStats.received.framesDropped++;
+    pTransceiver->inboundStats.received.fullFramesLost++;
+    MUTEX_UNLOCK(pTransceiver->statsLock);
+
+CleanUp:
+    return retStatus;
 }
 
 VOID onIceConnectionStateChange(UINT64 customData, UINT64 connectionState)
@@ -282,7 +377,7 @@ VOID onIceConnectionStateChange(UINT64 customData, UINT64 connectionState)
     STATUS retStatus = STATUS_SUCCESS;
     PKvsPeerConnection pKvsPeerConnection = (PKvsPeerConnection) customData;
     RTC_PEER_CONNECTION_STATE newConnectionState = RTC_PEER_CONNECTION_STATE_NEW;
-    BOOL startDtlsSession = FALSE;
+    BOOL startDtlsSession = FALSE, dtlsConnected;
 
     CHK(pKvsPeerConnection != NULL, STATUS_NULL_ARG);
 
@@ -302,7 +397,6 @@ VOID onIceConnectionStateChange(UINT64 customData, UINT64 connectionState)
         case ICE_AGENT_STATE_READY:
             /* start dtlsSession as soon as ice is connected */
             startDtlsSession = TRUE;
-            newConnectionState = RTC_PEER_CONNECTION_STATE_CONNECTED;
             break;
 
         case ICE_AGENT_STATE_DISCONNECTED:
@@ -319,7 +413,19 @@ VOID onIceConnectionStateChange(UINT64 customData, UINT64 connectionState)
     }
 
     if (startDtlsSession) {
-        CHK_STATUS(dtlsSessionStart(pKvsPeerConnection->pDtlsSession, pKvsPeerConnection->dtlsIsServer));
+        CHK_STATUS(dtlsSessionIsInitFinished(pKvsPeerConnection->pDtlsSession, &dtlsConnected));
+
+        if (dtlsConnected) {
+            // In ICE restart scenario, DTLS handshake is not going to be reset. Therefore, we need to check
+            // if the DTLS state has been connected.
+            newConnectionState = RTC_PEER_CONNECTION_STATE_CONNECTED;
+        } else {
+            // PeerConnection's state changes to CONNECTED only when DTLS state is also connected. So, we need
+            // wait until DTLS state changes to CONNECTED.
+            //
+            // Reference: https://w3c.github.io/webrtc-pc/#rtcpeerconnectionstate-enum
+            CHK_STATUS(dtlsSessionStart(pKvsPeerConnection->pDtlsSession, pKvsPeerConnection->dtlsIsServer));
+        }
     }
 
     CHK_STATUS(changePeerConnectionState(pKvsPeerConnection, newConnectionState));
@@ -385,12 +491,23 @@ VOID onSctpSessionDataChannelMessage(UINT64 customData, UINT32 channelId, BOOL i
     STATUS retStatus = STATUS_SUCCESS;
     PKvsPeerConnection pKvsPeerConnection = (PKvsPeerConnection) customData;
     PKvsDataChannel pKvsDataChannel = NULL;
+    UINT64 hashValue = 0;
 
     CHK(pKvsPeerConnection != NULL, STATUS_INTERNAL_ERROR);
 
-    CHK_STATUS(hashTableGet(pKvsPeerConnection->pDataChannels, channelId, (PUINT64) &pKvsDataChannel));
+    retStatus = hashTableGet(pKvsPeerConnection->pDataChannels, channelId, &hashValue);
+    pKvsDataChannel = (PKvsDataChannel) hashValue;
+    if (retStatus == STATUS_SUCCESS || retStatus == STATUS_HASH_KEY_NOT_PRESENT) {
+        retStatus = STATUS_SUCCESS;
+    } else {
+        CHK(FALSE, retStatus);
+    }
     CHK(pKvsDataChannel != NULL && pKvsDataChannel->onMessage != NULL, STATUS_INTERNAL_ERROR);
-
+    pKvsDataChannel->rtcDataChannelDiagnostics.messagesReceived++;
+    pKvsDataChannel->rtcDataChannelDiagnostics.bytesReceived += pMessageLen;
+    if (STATUS_FAILED(hashTableUpsert(pKvsPeerConnection->pDataChannels, channelId, (UINT64) pKvsDataChannel))) {
+        DLOGW("Failed to update entry in hash table with recent changes to data channel");
+    }
     pKvsDataChannel->onMessage(pKvsDataChannel->onMessageCustomData, &pKvsDataChannel->dataChannel, isBinary, pMessage, pMessageLen);
 
 CleanUp:
@@ -399,7 +516,7 @@ CleanUp:
     }
 }
 
-VOID onSctpSessionDataChannelOpen(UINT64 customData, UINT32 channelId, PBYTE pName, UINT32 pNameLen)
+VOID onSctpSessionDataChannelOpen(UINT64 customData, UINT32 channelId, PBYTE pName, UINT32 nameLen)
 {
     STATUS retStatus = STATUS_SUCCESS;
     PKvsPeerConnection pKvsPeerConnection = (PKvsPeerConnection) customData;
@@ -410,12 +527,16 @@ VOID onSctpSessionDataChannelOpen(UINT64 customData, UINT32 channelId, PBYTE pNa
     pKvsDataChannel = (PKvsDataChannel) MEMCALLOC(1, SIZEOF(KvsDataChannel));
     CHK(pKvsDataChannel != NULL, STATUS_NOT_ENOUGH_MEMORY);
 
-    STRNCPY(pKvsDataChannel->dataChannel.name, (PCHAR) pName, pNameLen);
+    STRNCPY(pKvsDataChannel->dataChannel.name, (PCHAR) pName, nameLen);
+    pKvsDataChannel->dataChannel.id = channelId;
     pKvsDataChannel->pRtcPeerConnection = (PRtcPeerConnection) pKvsPeerConnection;
     pKvsDataChannel->channelId = channelId;
 
+    // Set the data channel parameters when data channel is created by peer
+    pKvsDataChannel->rtcDataChannelDiagnostics.dataChannelIdentifier = channelId;
+    pKvsDataChannel->rtcDataChannelDiagnostics.state = RTC_DATA_CHANNEL_STATE_OPEN;
+    STRNCPY(pKvsDataChannel->rtcDataChannelDiagnostics.label, (PCHAR) pName, nameLen);
     CHK_STATUS(hashTablePut(pKvsPeerConnection->pDataChannels, channelId, (UINT64) pKvsDataChannel));
-
     pKvsPeerConnection->onDataChannel(pKvsPeerConnection->onDataChannelCustomData, &(pKvsDataChannel->dataChannel));
 
 CleanUp:
@@ -443,8 +564,13 @@ VOID onDtlsStateChange(UINT64 customData, RTC_DTLS_TRANSPORT_STATE newDtlsState)
 
     pKvsPeerConnection = (PKvsPeerConnection) customData;
 
-    if (newDtlsState == CLOSED) {
-        changePeerConnectionState(pKvsPeerConnection, RTC_PEER_CONNECTION_STATE_CLOSED);
+    switch (newDtlsState) {
+        case RTC_DTLS_TRANSPORT_STATE_CLOSED:
+            changePeerConnectionState(pKvsPeerConnection, RTC_PEER_CONNECTION_STATE_CLOSED);
+            break;
+        default:
+            /* explicit ignore */
+            break;
     }
 }
 
@@ -484,7 +610,7 @@ STATUS rtcpReportsCallback(UINT32 timerId, UINT64 currentTime, UINT64 customData
     pKvsPeerConnection = pKvsRtpTransceiver->pKvsPeerConnection;
 
     ssrc = pKvsRtpTransceiver->sender.ssrc;
-    DLOGV("rtcpReportsCallback %" PRIu64 " ssrc: %u rtxssrc: %u", currentTime, ssrc, pKvsRtpTransceiver->sender.rtxSsrc);
+    DLOGS("rtcpReportsCallback %" PRIu64 " ssrc: %u rtxssrc: %u", currentTime, ssrc, pKvsRtpTransceiver->sender.rtxSsrc);
 
     // check if ice agent is connected, reschedule in 200msec if not
     ready = pKvsPeerConnection->pSrtpSession != NULL &&
@@ -497,10 +623,10 @@ STATUS rtcpReportsCallback(UINT32 timerId, UINT64 currentTime, UINT64 customData
         ntpTime = convertTimestampToNTP(currentTime);
         rtpTime = pKvsRtpTransceiver->sender.rtpTimeOffset +
             CONVERT_TIMESTAMP_TO_RTP(pKvsRtpTransceiver->pJitterBuffer->clockRate, currentTime - pKvsRtpTransceiver->sender.firstFrameWallClockTime);
-        MUTEX_LOCK(pKvsRtpTransceiver->sender.statsLock);
-        packetCount = pKvsRtpTransceiver->sender.outboundStats.sent.packetsSent;
-        octetCount = pKvsRtpTransceiver->sender.outboundStats.sent.bytesSent;
-        MUTEX_UNLOCK(pKvsRtpTransceiver->sender.statsLock);
+        MUTEX_LOCK(pKvsRtpTransceiver->statsLock);
+        packetCount = pKvsRtpTransceiver->outboundStats.sent.packetsSent;
+        octetCount = pKvsRtpTransceiver->outboundStats.sent.bytesSent;
+        MUTEX_UNLOCK(pKvsRtpTransceiver->statsLock);
         DLOGV("sender report %u %" PRIu64 " %" PRIu64 " : %u packets %u bytes", ssrc, ntpTime, rtpTime, packetCount, octetCount);
         packetLen = RTCP_PACKET_HEADER_LEN + 24;
 
@@ -522,7 +648,7 @@ STATUS rtcpReportsCallback(UINT32 timerId, UINT64 currentTime, UINT64 customData
     }
 
     delay = 100 + (RAND() % 200);
-    DLOGV("next sender report %u in %" PRIu64 " msec", ssrc, delay);
+    DLOGS("next sender report %u in %" PRIu64 " msec", ssrc, delay);
     // reschedule timer with 200msec +- 100ms
     CHK_STATUS(timerQueueAddTimer(pKvsPeerConnection->timerQueueHandle, delay * HUNDREDS_OF_NANOS_IN_A_MILLISECOND,
                                   TIMER_QUEUE_SINGLE_INVOCATION_PERIOD, rtcpReportsCallback, (UINT64) pKvsRtpTransceiver,
@@ -541,8 +667,6 @@ STATUS createPeerConnection(PRtcConfiguration pConfiguration, PRtcPeerConnection
     PKvsPeerConnection pKvsPeerConnection = NULL;
     IceAgentCallbacks iceAgentCallbacks;
     DtlsSessionCallbacks dtlsSessionCallbacks;
-    UINT32 logLevel = LOG_LEVEL_DEBUG;
-    PCHAR logLevelStr = NULL;
     PConnectionListener pConnectionListener = NULL;
 
     CHK(pConfiguration != NULL && ppPeerConnection != NULL, STATUS_NULL_ARG);
@@ -569,14 +693,7 @@ STATUS createPeerConnection(PRtcConfiguration pConfiguration, PRtcPeerConnection
     CHK_STATUS(hashTableCreateWithParams(CODEC_HASH_TABLE_BUCKET_COUNT, CODEC_HASH_TABLE_BUCKET_LENGTH, &pKvsPeerConnection->pCodecTable));
     CHK_STATUS(hashTableCreateWithParams(CODEC_HASH_TABLE_BUCKET_COUNT, CODEC_HASH_TABLE_BUCKET_LENGTH, &pKvsPeerConnection->pDataChannels));
     CHK_STATUS(hashTableCreateWithParams(RTX_HASH_TABLE_BUCKET_COUNT, RTX_HASH_TABLE_BUCKET_LENGTH, &pKvsPeerConnection->pRtxTable));
-    CHK_STATUS(doubleListCreate(&(pKvsPeerConnection->pTransceievers)));
-
-    if ((logLevelStr = GETENV(DEBUG_LOG_LEVEL_ENV_VAR)) != NULL) {
-        CHK_STATUS(STRTOUI32(logLevelStr, NULL, 10, &logLevel));
-        logLevel = MIN(MAX(logLevel, LOG_LEVEL_VERBOSE), LOG_LEVEL_SILENT);
-    }
-
-    SET_LOGGER_LOG_LEVEL(logLevel);
+    CHK_STATUS(doubleListCreate(&(pKvsPeerConnection->pTransceivers)));
 
     pKvsPeerConnection->pSrtpSessionLock = MUTEX_CREATE(TRUE);
     pKvsPeerConnection->peerConnectionObjLock = MUTEX_CREATE(FALSE);
@@ -584,6 +701,7 @@ STATUS createPeerConnection(PRtcConfiguration pConfiguration, PRtcPeerConnection
     pKvsPeerConnection->MTU = pConfiguration->kvsRtcConfiguration.maximumTransmissionUnit == 0
         ? DEFAULT_MTU_SIZE
         : pConfiguration->kvsRtcConfiguration.maximumTransmissionUnit;
+    pKvsPeerConnection->sctpIsEnabled = FALSE;
 
     iceAgentCallbacks.customData = (UINT64) pKvsPeerConnection;
     iceAgentCallbacks.inboundPacketFn = onInboundPacket;
@@ -649,7 +767,7 @@ STATUS freePeerConnection(PRtcPeerConnection* ppPeerConnection)
     CHK_LOG_ERR(freeIceAgent(&pKvsPeerConnection->pIceAgent));
 
     // free transceivers
-    CHK_LOG_ERR(doubleListGetHeadNode(pKvsPeerConnection->pTransceievers, &pCurNode));
+    CHK_LOG_ERR(doubleListGetHeadNode(pKvsPeerConnection->pTransceivers, &pCurNode));
     while (pCurNode != NULL) {
         CHK_LOG_ERR(doubleListGetNodeData(pCurNode, &item));
         CHK_LOG_ERR(freeKvsRtpTransceiver((PKvsRtpTransceiver*) &item));
@@ -664,7 +782,7 @@ STATUS freePeerConnection(PRtcPeerConnection* ppPeerConnection)
     // free rest of structs
     CHK_LOG_ERR(freeSrtpSession(&pKvsPeerConnection->pSrtpSession));
     CHK_LOG_ERR(freeDtlsSession(&pKvsPeerConnection->pDtlsSession));
-    CHK_LOG_ERR(doubleListFree(pKvsPeerConnection->pTransceievers));
+    CHK_LOG_ERR(doubleListFree(pKvsPeerConnection->pTransceivers));
     CHK_LOG_ERR(hashTableFree(pKvsPeerConnection->pCodecTable));
     CHK_LOG_ERR(hashTableFree(pKvsPeerConnection->pRtxTable));
     if (IS_VALID_MUTEX_VALUE(pKvsPeerConnection->pSrtpSessionLock)) {
@@ -812,6 +930,7 @@ STATUS peerConnectionGetCurrentLocalDescription(PRtcPeerConnection pRtcPeerConne
     CHK(NULL != (pSessionDescription = (PSessionDescription) MEMCALLOC(1, SIZEOF(SessionDescription))), STATUS_NOT_ENOUGH_MEMORY);
 
     CHK_STATUS(populateSessionDescription(pKvsPeerConnection, &(pKvsPeerConnection->remoteSessionDescription), pSessionDescription));
+
     CHK_STATUS(serializeSessionDescription(pSessionDescription, NULL, &serializeLen));
     CHK(serializeLen <= MAX_SESSION_DESCRIPTION_INIT_SDP_LEN, STATUS_NOT_ENOUGH_MEMORY);
 
@@ -823,6 +942,22 @@ CleanUp:
 
     LEAVES();
     return retStatus;
+}
+
+/**
+ *  @brief parses string of form "$number $whatever" returns $number as uint32
+ *  @return 0 if value is not parsable or null
+ */
+UINT32 parseExtId(PCHAR extmapValue)
+{
+    UINT32 extid = 0;
+    if (extmapValue == NULL && STRCHR(extmapValue, ' ') == NULL) {
+        return 0;
+    }
+    if (STATUS_FAILED(STRTOUI32(extmapValue, STRCHR(extmapValue, ' '), 10, &extid))) {
+        return 0;
+    }
+    return extid;
 }
 
 STATUS setRemoteDescription(PRtcPeerConnection pPeerConnection, PRtcSessionDescriptionInit pSessionDescriptionInit)
@@ -851,13 +986,18 @@ STATUS setRemoteDescription(PRtcPeerConnection pPeerConnection, PRtcSessionDescr
                     CERTIFICATE_FINGERPRINT_LENGTH);
         } else if (pKvsPeerConnection->isOffer && STRCMP(pSessionDescription->sdpAttributes[i].attributeName, "setup") == 0) {
             pKvsPeerConnection->dtlsIsServer = STRCMP(pSessionDescription->sdpAttributes[i].attributeValue, "active") == 0;
+        } else if (STRCMP(pSessionDescription->sdpAttributes[i].attributeName, "ice-options") == 0 &&
+                   STRSTR(pSessionDescription->sdpAttributes[i].attributeValue, "trickle") != NULL) {
+            NULLABLE_SET_VALUE(pKvsPeerConnection->canTrickleIce, TRUE);
         }
     }
 
     for (i = 0; i < pSessionDescription->mediaCount; i++) {
+#ifdef ENABLE_DATA_CHANNEL
         if (STRNCMP(pSessionDescription->mediaDescriptions[i].mediaName, "application", SIZEOF("application") - 1) == 0) {
             pKvsPeerConnection->sctpIsEnabled = TRUE;
         }
+#endif
 
         for (j = 0; j < pSessionDescription->mediaDescriptions[i].mediaAttributesCount; j++) {
             if (STRCMP(pSessionDescription->mediaDescriptions[i].sdpAttributes[j].attributeName, "ice-ufrag") == 0) {
@@ -874,8 +1014,13 @@ STATUS setRemoteDescription(PRtcPeerConnection pPeerConnection, PRtcSessionDescr
                        STRCMP(pSessionDescription->mediaDescriptions[i].sdpAttributes[j].attributeName, "setup") == 0) {
                 pKvsPeerConnection->dtlsIsServer = STRCMP(pSessionDescription->mediaDescriptions[i].sdpAttributes[j].attributeValue, "active") == 0;
             } else if (STRCMP(pSessionDescription->mediaDescriptions[i].sdpAttributes[j].attributeName, "ice-options") == 0 &&
-                       STRCMP(pSessionDescription->mediaDescriptions[i].sdpAttributes[j].attributeValue, "trickle") == 0) {
+                       STRSTR(pSessionDescription->mediaDescriptions[i].sdpAttributes[j].attributeValue, "trickle") != NULL) {
                 NULLABLE_SET_VALUE(pKvsPeerConnection->canTrickleIce, TRUE);
+                // This code is only here because Chrome does NOT adhere to the standard and adds ice-options as a media level attribute
+                // The standard dictates clearly that it should be a session level attribute:  https://tools.ietf.org/html/rfc5245#page-76
+            } else if (STRCMP(pSessionDescription->mediaDescriptions[i].sdpAttributes[j].attributeName, "extmap") == 0 &&
+                       STRSTR(pSessionDescription->mediaDescriptions[i].sdpAttributes[j].attributeValue, TWCC_EXT_URL) != NULL) {
+                pKvsPeerConnection->twccExtId = parseExtId(pSessionDescription->mediaDescriptions[i].sdpAttributes[j].attributeValue);
             }
         }
     }
@@ -901,10 +1046,10 @@ STATUS setRemoteDescription(PRtcPeerConnection pPeerConnection, PRtcSessionDescr
     if (!pKvsPeerConnection->isOffer) {
         CHK_STATUS(setPayloadTypesFromOffer(pKvsPeerConnection->pCodecTable, pKvsPeerConnection->pRtxTable, pSessionDescription));
     }
-    CHK_STATUS(setTransceiverPayloadTypes(pKvsPeerConnection->pCodecTable, pKvsPeerConnection->pRtxTable, pKvsPeerConnection->pTransceievers));
-    CHK_STATUS(setReceiversSsrc(pSessionDescription, pKvsPeerConnection->pTransceievers));
+    CHK_STATUS(setTransceiverPayloadTypes(pKvsPeerConnection->pCodecTable, pKvsPeerConnection->pRtxTable, pKvsPeerConnection->pTransceivers));
+    CHK_STATUS(setReceiversSsrc(pSessionDescription, pKvsPeerConnection->pTransceivers));
 
-    if (NULL != getenv(DEBUG_LOG_SDP)) {
+    if (NULL != GETENV(DEBUG_LOG_SDP)) {
         DLOGD("REMOTE_SDP:%s\n", pSessionDescriptionInit->sdp);
     }
 
@@ -930,7 +1075,9 @@ STATUS createOffer(PRtcPeerConnection pPeerConnection, PRtcSessionDescriptionIni
     pSessionDescriptionInit->type = SDP_TYPE_OFFER;
     pKvsPeerConnection->isOffer = TRUE;
 
+#ifdef ENABLE_DATA_CHANNEL
     pKvsPeerConnection->sctpIsEnabled = TRUE;
+#endif
     CHK_STATUS(setPayloadTypesForOffer(pKvsPeerConnection->pCodecTable));
 
     CHK_STATUS(populateSessionDescription(pKvsPeerConnection, &(pKvsPeerConnection->remoteSessionDescription), pSessionDescription));
@@ -939,6 +1086,10 @@ STATUS createOffer(PRtcPeerConnection pPeerConnection, PRtcSessionDescriptionIni
 
     CHK_STATUS(serializeSessionDescription(pSessionDescription, pSessionDescriptionInit->sdp, &serializeLen));
 
+    // If embedded SDK acts as the viewer
+    if (NULL != GETENV(DEBUG_LOG_SDP)) {
+        DLOGD("LOCAL_SDP:%s", pSessionDescriptionInit->sdp);
+    }
 CleanUp:
 
     SAFE_MEMFREE(pSessionDescription);
@@ -961,6 +1112,10 @@ STATUS createAnswer(PRtcPeerConnection pPeerConnection, PRtcSessionDescriptionIn
 
     CHK_STATUS(peerConnectionGetCurrentLocalDescription(pPeerConnection, pSessionDescriptionInit));
 
+    // If embedded SDK acts as the master
+    if (NULL != GETENV(DEBUG_LOG_SDP)) {
+        DLOGD("LOCAL_SDP:%s", pSessionDescriptionInit->sdp);
+    }
 CleanUp:
 
     LEAVES();
@@ -977,10 +1132,6 @@ STATUS setLocalDescription(PRtcPeerConnection pPeerConnection, PRtcSessionDescri
     CHK(pKvsPeerConnection != NULL && pSessionDescriptionInit != NULL, STATUS_NULL_ARG);
 
     CHK_STATUS(iceAgentStartGathering(pKvsPeerConnection->pIceAgent));
-
-    if (NULL != getenv(DEBUG_LOG_SDP)) {
-        DLOGD("LOCAL_SDP:%s", pSessionDescriptionInit->sdp);
-    }
 CleanUp:
 
     LEAVES();
@@ -1042,7 +1193,7 @@ STATUS addTransceiver(PRtcPeerConnection pPeerConnection, PRtcMediaStreamTrack p
     // after pKvsRtpTransceiver is successfully created, jitterBuffer will be freed by pKvsRtpTransceiver.
     pJitterBuffer = NULL;
 
-    CHK_STATUS(doubleListInsertItemHead(pKvsPeerConnection->pTransceievers, (UINT64) pKvsRtpTransceiver));
+    CHK_STATUS(doubleListInsertItemHead(pKvsPeerConnection->pTransceivers, (UINT64) pKvsRtpTransceiver));
     *ppRtcRtpTransceiver = (PRtcRtpTransceiver) pKvsRtpTransceiver;
 
     CHK_STATUS(timerQueueAddTimer(pKvsPeerConnection->timerQueueHandle, RTCP_FIRST_REPORT_DELAY, TIMER_QUEUE_SINGLE_INVOCATION_PERIOD,
@@ -1126,7 +1277,6 @@ STATUS closePeerConnection(PRtcPeerConnection pPeerConnection)
     PKvsPeerConnection pKvsPeerConnection = (PKvsPeerConnection) pPeerConnection;
 
     CHK(pKvsPeerConnection != NULL, STATUS_NULL_ARG);
-
     CHK_LOG_ERR(dtlsSessionShutdown(pKvsPeerConnection->pDtlsSession));
     CHK_LOG_ERR(iceAgentShutdown(pKvsPeerConnection->pIceAgent));
 
@@ -1170,7 +1320,9 @@ STATUS initKvsWebRtc(VOID)
 
     KVS_CRYPTO_INIT();
 
+#ifdef ENABLE_DATA_CHANNEL
     CHK_STATUS(initSctpSession());
+#endif
 
     ATOMIC_STORE_BOOL(&gKvsWebRtcInitialized, TRUE);
 
@@ -1186,7 +1338,9 @@ STATUS deinitKvsWebRtc(VOID)
     STATUS retStatus = STATUS_SUCCESS;
     CHK(ATOMIC_LOAD_BOOL(&gKvsWebRtcInitialized), retStatus);
 
+#ifdef ENABLE_DATA_CHANNEL
     deinitSctpSession();
+#endif
 
     srtp_shutdown();
 

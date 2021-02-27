@@ -279,7 +279,7 @@ STATUS executeGetTokenSignalingState(UINT64 customData, UINT64 time)
     retStatus = pSignalingClient->pCredentialProvider->getCredentialsFn(pSignalingClient->pCredentialProvider, &pSignalingClient->pAwsCredentials);
 
     // Check the expiration
-    if (GETTIME() >= pSignalingClient->pAwsCredentials->expiration) {
+    if (NULL == pSignalingClient->pAwsCredentials || GETTIME() >= pSignalingClient->pAwsCredentials->expiration) {
         serviceCallResult = SERVICE_CALL_NOT_AUTHORIZED;
     } else {
         serviceCallResult = SERVICE_CALL_RESULT_OK;
@@ -618,9 +618,6 @@ STATUS executeReadySignalingState(UINT64 customData, UINT64 time)
         CHK_STATUS(pSignalingClient->signalingClientCallbacks.stateChangeFn(pSignalingClient->signalingClientCallbacks.customData,
                                                                             SIGNALING_CLIENT_STATE_READY));
     }
-
-    // Ensure we won't async the GetIceConfig as we reach the ready state
-    ATOMIC_STORE_BOOL(&pSignalingClient->asyncGetIceConfig, FALSE);
 
     if (pSignalingClient->continueOnReady) {
         // Self-prime the connect

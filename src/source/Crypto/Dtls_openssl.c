@@ -52,7 +52,7 @@ STATUS dtlsTransmissionTimerCallback(UINT32 timerID, UINT64 currentTime, UINT64 
     CHK_STATUS(dtlsCheckOutgoingDataBuffer(pDtlsSession));
 
     if (SSL_is_init_finished(pDtlsSession->pSsl)) {
-        CHK_STATUS(dtlsSessionChangeState(pDtlsSession, CONNECTED));
+        CHK_STATUS(dtlsSessionChangeState(pDtlsSession, RTC_DTLS_TRANSPORT_STATE_CONNECTED));
         ATOMIC_STORE_BOOL(&pDtlsSession->sslInitFinished, TRUE);
         CHK(FALSE, STATUS_TIMER_QUEUE_STOP_SCHEDULING);
     }
@@ -94,9 +94,11 @@ STATUS createCertificateAndKey(INT32 certificateBits, BOOL generateRSACertificat
     X509_NAME* pX509Name = NULL;
     UINT32 eccGroup = 0;
     EC_KEY* eccKey = NULL;
+    UINT64 certSn;
 
     CHK(ppCert != NULL && ppPkey != NULL, STATUS_NULL_ARG);
     CHK((*ppPkey = EVP_PKEY_new()) != NULL, STATUS_CERTIFICATE_GENERATION_FAILED);
+    CHK_STATUS(dtlsFillPseudoRandomBits((PBYTE) &certSn, SIZEOF(UINT64)));
 
     if (generateRSACertificate) {
         CHK((pBne = BN_new()) != NULL, STATUS_CERTIFICATE_GENERATION_FAILED);
@@ -119,7 +121,7 @@ STATUS createCertificateAndKey(INT32 certificateBits, BOOL generateRSACertificat
 
     CHK((*ppCert = X509_new()) != NULL, STATUS_CERTIFICATE_GENERATION_FAILED);
     X509_set_version(*ppCert, 2);
-    ASN1_INTEGER_set(X509_get_serialNumber(*ppCert), GENERATED_CERTIFICATE_SERIAL);
+    ASN1_INTEGER_set_uint64(X509_get_serialNumber(*ppCert), certSn);
     X509_gmtime_adj(X509_get_notBefore(*ppCert), -1 * GENERATED_CERTIFICATE_DAYS * SECONDS_IN_A_DAY);
     X509_gmtime_adj(X509_get_notAfter(*ppCert), GENERATED_CERTIFICATE_DAYS * SECONDS_IN_A_DAY);
     CHK(X509_set_pubkey(*ppCert, *ppPkey) != 0, STATUS_CERTIFICATE_GENERATION_FAILED);
@@ -280,9 +282,9 @@ STATUS createDtlsSession(PDtlsSessionCallbacks pDtlsSessionCallbacks, TIMER_QUEU
     CHK(pDtlsSession != NULL, STATUS_NOT_ENOUGH_MEMORY);
 
     pDtlsSession->timerQueueHandle = timerQueueHandle;
-    pDtlsSession->timerId = UINT32_MAX;
+    pDtlsSession->timerId = MAX_UINT32;
     pDtlsSession->sslLock = MUTEX_CREATE(TRUE);
-    pDtlsSession->state = NEW;
+    pDtlsSession->state = RTC_DTLS_TRANSPORT_STATE_NEW;
     ATOMIC_STORE_BOOL(&pDtlsSession->isStarted, FALSE);
     ATOMIC_STORE_BOOL(&pDtlsSession->sslInitFinished, FALSE);
 
@@ -363,7 +365,7 @@ STATUS dtlsSessionStart(PDtlsSession pDtlsSession, BOOL isServer)
     MUTEX_LOCK(pDtlsSession->sslLock);
     locked = TRUE;
 
-    CHK_STATUS(dtlsSessionChangeState(pDtlsSession, CONNECTING));
+    CHK_STATUS(dtlsSessionChangeState(pDtlsSession, RTC_DTLS_TRANSPORT_STATE_CONNECTING));
 
     /* Need to set isStarted to TRUE after acquiring the lock to make sure dtlsSessionProcessPacket
      * dont proceed before dtlsSessionStart finish */
@@ -407,7 +409,7 @@ STATUS freeDtlsSession(PDtlsSession* ppDtlsSession)
 
     CHK(pDtlsSession != NULL, retStatus);
 
-    if (pDtlsSession->timerId != UINT32_MAX) {
+    if (pDtlsSession->timerId != MAX_UINT32) {
         timerQueueCancelTimer(pDtlsSession->timerQueueHandle, pDtlsSession->timerId, (UINT64) pDtlsSession);
     }
 
@@ -469,7 +471,7 @@ STATUS dtlsSessionProcessPacket(PDtlsSession pDtlsSession, PBYTE pData, PINT32 p
 
     if (isClosed) {
         ATOMIC_STORE_BOOL(&pDtlsSession->shutdown, TRUE);
-        CHK_STATUS(dtlsSessionChangeState(pDtlsSession, CLOSED));
+        CHK_STATUS(dtlsSessionChangeState(pDtlsSession, RTC_DTLS_TRANSPORT_STATE_CLOSED));
     }
 
 CleanUp:
@@ -535,7 +537,7 @@ STATUS dtlsSessionShutdown(PDtlsSession pDtlsSession)
     SSL_shutdown(pDtlsSession->pSsl);
     ATOMIC_STORE_BOOL(&pDtlsSession->shutdown, TRUE);
     CHK_STATUS(dtlsCheckOutgoingDataBuffer(pDtlsSession));
-    CHK_STATUS(dtlsSessionChangeState(pDtlsSession, CLOSED));
+    CHK_STATUS(dtlsSessionChangeState(pDtlsSession, RTC_DTLS_TRANSPORT_STATE_CLOSED));
 
 CleanUp:
 
@@ -692,7 +694,7 @@ CleanUp:
     }
 
     if (retStatus == STATUS_SSL_REMOTE_CERTIFICATE_VERIFICATION_FAILED) {
-        dtlsSessionChangeState(pDtlsSession, FAILED);
+        dtlsSessionChangeState(pDtlsSession, RTC_DTLS_TRANSPORT_STATE_FAILED);
     }
 
     if (locked) {

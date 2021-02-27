@@ -13,7 +13,7 @@ class IceFunctionalityTest : public WebRtcClientTestBase {
 BOOL candidatePairsInOrder(PDoubleList iceCandidatePairs)
 {
     BOOL inOrder = TRUE;
-    UINT64 previousPriority = UINT64_MAX;
+    UINT64 previousPriority = MAX_UINT64;
     PDoubleListNode pCurNode = NULL;
     PIceCandidatePair pIceCandidatePair = NULL;
 
@@ -151,9 +151,10 @@ TEST_F(IceFunctionalityTest, connectionListenerFunctionalityTest)
     PConnectionListener pConnectionListener;
     ConnectionListenerTestCustomData routine1CustomData, routine2CustomData;
     TID routine1, routine2;
-    UINT32 connectionCount = 0, newConnectionCount = 0, i;
+    UINT32 connectionCount , newConnectionCount, i;
     PSocketConnection pSocketConnection = NULL;
     KvsIpAddress localhost;
+    TID threadId;
 
     MEMSET(&routine1CustomData, 0x0, SIZEOF(ConnectionListenerTestCustomData));
     MEMSET(&routine2CustomData, 0x0, SIZEOF(ConnectionListenerTestCustomData));
@@ -184,26 +185,33 @@ TEST_F(IceFunctionalityTest, connectionListenerFunctionalityTest)
     THREAD_JOIN(routine1, NULL);
     THREAD_JOIN(routine2, NULL);
 
-    EXPECT_EQ(STATUS_SUCCESS, doubleListGetNodeCount(pConnectionListener->connectionList, &connectionCount));
+    connectionCount = pConnectionListener->socketCount;
     EXPECT_EQ(connectionCount, routine1CustomData.connectionToAdd + routine2CustomData.connectionToAdd);
 
     CHECK(STATUS_SUCCEEDED(
         createSocketConnection((KVS_IP_FAMILY_TYPE) localhost.family, KVS_SOCKET_PROTOCOL_UDP, &localhost, NULL, 0, NULL, 0, &pSocketConnection)));
     EXPECT_EQ(STATUS_SUCCESS, connectionListenerAddConnection(pConnectionListener, pSocketConnection));
 
-    EXPECT_EQ(STATUS_SUCCESS, doubleListGetNodeCount(pConnectionListener->connectionList, &newConnectionCount));
+    newConnectionCount = pConnectionListener->socketCount;
     EXPECT_EQ(connectionCount + 1, newConnectionCount);
 
     EXPECT_EQ(STATUS_SUCCESS, connectionListenerRemoveConnection(pConnectionListener, pSocketConnection));
-    EXPECT_EQ(STATUS_SUCCESS, doubleListGetNodeCount(pConnectionListener->connectionList, &newConnectionCount));
+    newConnectionCount = pConnectionListener->socketCount;
     EXPECT_EQ(connectionCount, newConnectionCount);
 
-    EXPECT_EQ(TRUE, IS_VALID_TID_VALUE(pConnectionListener->receiveDataRoutine));
+    // Keeping TSAN happy need to lock/unlock when retrieving the value of TID
+    MUTEX_LOCK(pConnectionListener->lock);
+    threadId = pConnectionListener->receiveDataRoutine;
+    MUTEX_UNLOCK(pConnectionListener->lock);
+    EXPECT_TRUE( IS_VALID_TID_VALUE(threadId));
     ATOMIC_STORE_BOOL(&pConnectionListener->terminate, TRUE);
 
-    THREAD_SLEEP((SOCKET_WAIT_FOR_DATA_TIMEOUT_SECONDS + 1) * HUNDREDS_OF_NANOS_IN_A_SECOND);
+    THREAD_SLEEP(CONNECTION_LISTENER_SHUTDOWN_TIMEOUT + 1 * HUNDREDS_OF_NANOS_IN_A_SECOND);
 
-    EXPECT_EQ(FALSE, ATOMIC_LOAD_BOOL(&pConnectionListener->listenerRoutineStarted));
+    MUTEX_LOCK(pConnectionListener->lock);
+    threadId = pConnectionListener->receiveDataRoutine;
+    MUTEX_UNLOCK(pConnectionListener->lock);
+    EXPECT_FALSE( IS_VALID_TID_VALUE(threadId));
 
     EXPECT_EQ(STATUS_SUCCESS, freeConnectionListener(&pConnectionListener));
 
@@ -353,6 +361,11 @@ TEST_F(IceFunctionalityTest, IceAgentAddRemoteCandidateUnitTest)
     EXPECT_EQ(STATUS_SUCCESS, doubleListGetNodeCount(iceAgent.remoteCandidates, &remoteCandidateCount));
     // duplicated candidates are not added
     EXPECT_EQ(1, remoteCandidateCount);
+
+    EXPECT_EQ(STATUS_SUCCESS, doubleListGetHeadNode(iceAgent.remoteCandidates, &pCurNode));
+    // parsing candidate priority correctly
+    EXPECT_EQ(2122260223, ((PIceCandidate)pCurNode->data)->priority);
+
     // candidate pair formed
     EXPECT_EQ(STATUS_SUCCESS, doubleListGetNodeCount(iceAgent.iceCandidatePairs, &iceCandidateCount));
     EXPECT_EQ(1, iceCandidateCount);
@@ -368,6 +381,10 @@ TEST_F(IceFunctionalityTest, IceAgentAddRemoteCandidateUnitTest)
     EXPECT_EQ(STATUS_SUCCESS, doubleListGetNodeCount(iceAgent.iceCandidatePairs, &iceCandidateCount));
     EXPECT_EQ(2, iceCandidateCount);
 
+    // parsing candidate priority correctly
+    EXPECT_EQ(STATUS_SUCCESS, doubleListGetHeadNode(iceAgent.remoteCandidates, &pCurNode));
+    EXPECT_EQ(2122262783, ((PIceCandidate)pCurNode->data)->priority);
+
     iceAgent.iceAgentState = ICE_AGENT_STATE_CHECK_CONNECTION;
     EXPECT_EQ(STATUS_SUCCESS, iceAgentAddRemoteCandidate(&iceAgent, relayCandidateStr));
     EXPECT_EQ(STATUS_SUCCESS, doubleListGetNodeCount(iceAgent.remoteCandidates, &remoteCandidateCount));
@@ -375,6 +392,10 @@ TEST_F(IceFunctionalityTest, IceAgentAddRemoteCandidateUnitTest)
     // candidate pair formed
     EXPECT_EQ(STATUS_SUCCESS, doubleListGetNodeCount(iceAgent.iceCandidatePairs, &iceCandidateCount));
     EXPECT_EQ(3, iceCandidateCount);
+
+    EXPECT_EQ(STATUS_SUCCESS, doubleListGetHeadNode(iceAgent.remoteCandidates, &pCurNode));
+    // parsing candidate priority correctly
+    EXPECT_EQ(41885439, ((PIceCandidate)pCurNode->data)->priority);
 
     MUTEX_FREE(iceAgent.lock);
     EXPECT_EQ(STATUS_SUCCESS, doubleListGetHeadNode(iceAgent.iceCandidatePairs, &pCurNode));

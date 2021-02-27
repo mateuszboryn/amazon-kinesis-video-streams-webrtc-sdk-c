@@ -4,7 +4,7 @@ project(libwebsocket-download NONE)
 
 include(ExternalProject)
 
-if (BUILD_STATIC)
+if (BUILD_STATIC_LIBS)
   set(LWS_WITH_STATIC 1)
   set(LWS_WITH_SHARED 0)
 else()
@@ -39,9 +39,11 @@ ExternalProject_Add(project_libwebsockets
         -DLWS_WITH_SHARED=${LWS_WITH_SHARED}
         -DLWS_STATIC_PIC=1
         -DLWS_WITH_ZLIB=0
+        -DLWS_HAVE_EVENTFD=0
         -DLWS_WITH_MBEDTLS=${LWS_WITH_MBEDTLS}
 # enable for debug output        -DCMAKE_BUILD_TYPE=DEBUG
         -DOPENSSL_ROOT_DIR=${OPENSSL_DIR}
+        -DCMAKE_C_FLAGS=${CMAKE_C_FLAGS}
         BUILD_ALWAYS      TRUE
     TEST_COMMAND      ""
 )

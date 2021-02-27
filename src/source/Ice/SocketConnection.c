@@ -35,6 +35,7 @@ STATUS createSocketConnection(KVS_IP_FAMILY_TYPE familyType, KVS_SOCKET_PROTOCOL
     }
     ATOMIC_STORE_BOOL(&pSocketConnection->connectionClosed, FALSE);
     ATOMIC_STORE_BOOL(&pSocketConnection->receiveData, FALSE);
+    ATOMIC_STORE_BOOL(&pSocketConnection->inUse, FALSE);
     pSocketConnection->dataAvailableCallbackCustomData = customData;
     pSocketConnection->dataAvailableCallbackFn = dataAvailableFn;
 
@@ -60,11 +61,22 @@ STATUS freeSocketConnection(PSocketConnection* ppSocketConnection)
     ENTERS();
     STATUS retStatus = STATUS_SUCCESS;
     PSocketConnection pSocketConnection = NULL;
+    UINT64 shutdownTimeout;
 
     CHK(ppSocketConnection != NULL, STATUS_NULL_ARG);
     pSocketConnection = *ppSocketConnection;
     CHK(pSocketConnection != NULL, retStatus);
     ATOMIC_STORE_BOOL(&pSocketConnection->connectionClosed, TRUE);
+
+    // Await for the socket connection to be released
+    shutdownTimeout = GETTIME() + KVS_ICE_TURN_CONNECTION_SHUTDOWN_TIMEOUT;
+    while (ATOMIC_LOAD_BOOL(&pSocketConnection->inUse) && GETTIME() < shutdownTimeout) {
+        THREAD_SLEEP(KVS_ICE_SHORT_CHECK_DELAY);
+    }
+
+    if (ATOMIC_LOAD_BOOL(&pSocketConnection->inUse)) {
+        DLOGW("Shutting down socket connection timedout after %u seconds", KVS_ICE_TURN_CONNECTION_SHUTDOWN_TIMEOUT / HUNDREDS_OF_NANOS_IN_A_SECOND);
+    }
 
     if (IS_VALID_MUTEX_VALUE(pSocketConnection->lock)) {
         MUTEX_FREE(pSocketConnection->lock);
@@ -74,7 +86,9 @@ STATUS freeSocketConnection(PSocketConnection* ppSocketConnection)
         freeTlsSession(&pSocketConnection->pTlsSession);
     }
 
-    close(pSocketConnection->localSocket);
+    if (STATUS_FAILED(retStatus = closeSocket(pSocketConnection->localSocket))) {
+        DLOGW("Failed to close the local socket with 0x%08x", retStatus);
+    }
 
     MEMFREE(pSocketConnection);
 
@@ -132,8 +146,13 @@ STATUS socketConnectionInitSecureConnection(PSocketConnection pSocketConnection,
     ENTERS();
     TlsSessionCallbacks callbacks;
     STATUS retStatus = STATUS_SUCCESS;
+    BOOL locked = FALSE;
 
     CHK(pSocketConnection != NULL, STATUS_NULL_ARG);
+
+    MUTEX_LOCK(pSocketConnection->lock);
+    locked = TRUE;
+
     CHK(pSocketConnection->pTlsSession == NULL, STATUS_INVALID_ARG);
 
     callbacks.outBoundPacketFnCustomData = callbacks.stateChangeFnCustomData = (UINT64) pSocketConnection;
@@ -147,6 +166,10 @@ STATUS socketConnectionInitSecureConnection(PSocketConnection pSocketConnection,
 CleanUp:
     if (STATUS_FAILED(retStatus) && pSocketConnection->pTlsSession != NULL) {
         freeTlsSession(&pSocketConnection->pTlsSession);
+    }
+
+    if (locked) {
+        MUTEX_UNLOCK(pSocketConnection->lock);
     }
 
     LEAVES();
@@ -281,12 +304,15 @@ BOOL socketConnectionIsConnected(PSocketConnection pSocketConnection)
         peerSockAddr = (struct sockaddr*) &ipv6PeerAddr;
     }
 
+    MUTEX_LOCK(pSocketConnection->lock);
     retVal = connect(pSocketConnection->localSocket, peerSockAddr, addrLen);
-    if (retVal == 0 || errno == EISCONN) {
+    MUTEX_UNLOCK(pSocketConnection->lock);
+
+    if (retVal == 0 || getErrorCode() == EISCONN) {
         return TRUE;
     }
 
-    DLOGW("socket connection check failed with errno %s", strerror(errno));
+    DLOGW("socket connection check failed with errno %s", getErrorString(getErrorCode()));
     return FALSE;
 }
 
@@ -328,9 +354,9 @@ STATUS socketSendDataWithRetry(PSocketConnection pSocketConnection, PBYTE buf, U
     }
 
     while (socketWriteAttempt < MAX_SOCKET_WRITE_RETRY && bytesWritten < bufLen) {
-        result = sendto(pSocketConnection->localSocket, buf, bufLen, NO_SIGNAL, destAddr, addrLen);
+        result = sendto(pSocketConnection->localSocket, buf + bytesWritten, bufLen - bytesWritten, NO_SIGNAL, destAddr, addrLen);
         if (result < 0) {
-            errorNum = errno;
+            errorNum = getErrorCode();
             if (errorNum == EAGAIN || errorNum == EWOULDBLOCK) {
                 FD_ZERO(&wfds);
                 FD_SET(pSocketConnection->localSocket, &wfds);
@@ -342,20 +368,22 @@ STATUS socketSendDataWithRetry(PSocketConnection pSocketConnection, PBYTE buf, U
                     /* loop back and try again */
                     DLOGD("select() timed out");
                 } else if (result < 0) {
-                    DLOGD("select() failed with errno %s", strerror(errorNum));
+                    DLOGD("select() failed with errno %s", getErrorString(getErrorCode()));
                     break;
                 }
             } else if (errorNum == EINTR) {
                 /* nothing need to be done, just retry */
             } else {
                 /* fatal error from send() */
-                DLOGD("sendto() failed with errno %s", strerror(errorNum));
+                DLOGD("sendto() failed with errno %s", getErrorString(errorNum));
                 break;
             }
+
+            // Indicate an attempt only on error
+            socketWriteAttempt++;
         } else {
             bytesWritten += result;
         }
-        socketWriteAttempt++;
     }
 
     if (pBytesWritten != NULL) {

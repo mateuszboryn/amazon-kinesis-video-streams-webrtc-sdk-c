@@ -153,6 +153,22 @@ a=fmtp:97 profile-level-id=42e01f;level-asymmetry-allowed=1
     EXPECT_STREQ(fmtpForPayloadType(25, &sessionDescription), NULL);
 }
 
+TEST_F(PeerConnectionApiTest, CONVERT_TIMESTAMP_TO_RTP_BigTimestamp)
+{
+    UINT64 timestamp = 16034753564030000;
+    UINT64 rtpTimestamp = CONVERT_TIMESTAMP_TO_RTP(VIDEO_CLOCKRATE, timestamp);
+    EXPECT_EQ(144312782076270, rtpTimestamp);
+}
+
+TEST_F(PeerConnectionApiTest, CONVERT_TIMESTAMP_TO_RTP_MacroWithMathOperations)
+{
+    UINT64 rtpTimestamp = CONVERT_TIMESTAMP_TO_RTP(40000 + 50000, HUNDREDS_OF_NANOS_IN_A_SECOND);
+    EXPECT_EQ(90000, rtpTimestamp);
+
+    rtpTimestamp = CONVERT_TIMESTAMP_TO_RTP(90000, HUNDREDS_OF_NANOS_IN_A_SECOND + HUNDREDS_OF_NANOS_IN_A_SECOND);
+    EXPECT_EQ(180000, rtpTimestamp);
+}
+
 } // namespace webrtcclient
 } // namespace video
 } // namespace kinesis

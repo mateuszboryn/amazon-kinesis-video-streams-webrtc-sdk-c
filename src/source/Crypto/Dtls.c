@@ -18,6 +18,7 @@ CleanUp:
 
 STATUS dtlsSessionOnStateChange(PDtlsSession pDtlsSession, UINT64 customData, DtlsSessionOnStateChange callbackFn)
 {
+    ENTERS();
     STATUS retStatus = STATUS_SUCCESS;
 
     CHK(pDtlsSession != NULL && callbackFn != NULL, STATUS_NULL_ARG);
@@ -28,6 +29,7 @@ STATUS dtlsSessionOnStateChange(PDtlsSession pDtlsSession, UINT64 customData, Dt
     MUTEX_UNLOCK(pDtlsSession->sslLock);
 
 CleanUp:
+    LEAVES();
     return retStatus;
 }
 
@@ -35,7 +37,7 @@ STATUS dtlsValidateRtcCertificates(PRtcCertificate pRtcCertificates, PUINT32 pCo
 {
     ENTERS();
     STATUS retStatus = STATUS_SUCCESS;
-    UINT32 i;
+    UINT32 i = 0;
 
     CHK(pRtcCertificates != NULL && pCount != NULL, retStatus);
 
@@ -43,9 +45,12 @@ STATUS dtlsValidateRtcCertificates(PRtcCertificate pRtcCertificates, PUINT32 pCo
         CHK(pRtcCertificates[i].privateKeySize == 0 || pRtcCertificates[i].pPrivateKey != NULL, STATUS_SSL_INVALID_CERTIFICATE_BITS);
     }
 
-    *pCount = i;
-
 CleanUp:
+
+    // If pRtcCertificates is NULL, default pCount to 0
+    if (pCount != NULL) {
+        *pCount = i;
+    }
 
     LEAVES();
     return retStatus;
@@ -59,13 +64,32 @@ STATUS dtlsSessionChangeState(PDtlsSession pDtlsSession, RTC_DTLS_TRANSPORT_STAT
     CHK(pDtlsSession != NULL, STATUS_NULL_ARG);
     CHK(pDtlsSession->state != newState, retStatus);
 
-    if (pDtlsSession->state == CONNECTING && newState == CONNECTED) {
+    if (pDtlsSession->state == RTC_DTLS_TRANSPORT_STATE_CONNECTING && newState == RTC_DTLS_TRANSPORT_STATE_CONNECTED) {
         DLOGD("DTLS init completed. Time taken %" PRIu64 " ms",
               (GETTIME() - pDtlsSession->dtlsSessionStartTime) / HUNDREDS_OF_NANOS_IN_A_MILLISECOND);
     }
     pDtlsSession->state = newState;
     if (pDtlsSession->dtlsSessionCallbacks.stateChangeFn != NULL) {
         pDtlsSession->dtlsSessionCallbacks.stateChangeFn(pDtlsSession->dtlsSessionCallbacks.stateChangeFnCustomData, newState);
+    }
+
+CleanUp:
+
+    LEAVES();
+    return retStatus;
+}
+
+STATUS dtlsFillPseudoRandomBits(PBYTE pBuf, UINT32 bufSize)
+{
+    ENTERS();
+    STATUS retStatus = STATUS_SUCCESS;
+    UINT32 i;
+
+    CHK(pBuf != NULL, STATUS_NULL_ARG);
+    CHK(bufSize >= DTLS_CERT_MIN_SERIAL_NUM_SIZE && bufSize <= DTLS_CERT_MAX_SERIAL_NUM_SIZE, retStatus);
+
+    for (i = 0; i < bufSize; i++) {
+        *pBuf++ = (BYTE)(RAND() & 0xFF);
     }
 
 CleanUp:

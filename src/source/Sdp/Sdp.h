@@ -35,10 +35,11 @@ extern "C" {
 // Reference: https://tools.ietf.org/html/rfc4566#section-5
 #define SDP_LINE_SEPARATOR "\r\n"
 
-#define SDP_CANDIDATE_TYPE_HOST   "host"
-#define SDP_CANDIDATE_TYPE_SERFLX "srflx"
-#define SDP_CANDIDATE_TYPE_PRFLX  "prflx"
-#define SDP_CANDIDATE_TYPE_RELAY  "relay"
+#define SDP_CANDIDATE_TYPE_HOST    "host"
+#define SDP_CANDIDATE_TYPE_SERFLX  "srflx"
+#define SDP_CANDIDATE_TYPE_PRFLX   "prflx"
+#define SDP_CANDIDATE_TYPE_RELAY   "relay"
+#define SDP_CANDIDATE_TYPE_UNKNOWN "unknown"
 
 #define SDP_ATTRIBUTE_LENGTH 2
 
@@ -61,6 +62,7 @@ extern "C" {
 #define MAX_SDP_SESSION_PHONE_NUMBER_LENGTH  255
 
 #define MAX_SDP_TOKEN_LENGTH 128
+#define MAX_SDP_FMTP_VALUES  64
 
 #define MAX_SDP_SESSION_BANDWIDTH_COUNT        2
 #define MAX_SDP_SESSION_TIME_DESCRIPTION_COUNT 2

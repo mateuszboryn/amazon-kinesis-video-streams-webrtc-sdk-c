@@ -62,6 +62,11 @@ Create a build directory in the newly checked out repository, and execute CMake 
 We have provided an example of using GStreamer to capture/encode video, and then send via this library. This is only build if `pkg-config` finds
 GStreamer is installed on your system.
 
+On Ubuntu and Raspberry Pi OS you can get the libraries by running
+```
+$ sudo apt-get install libssl-dev libcurl4-openssl-dev liblog4cplus-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev gstreamer1.0-plugins-base-apps gstreamer1.0-plugins-bad gstreamer1.0-plugins-good gstreamer1.0-plugins-ugly gstreamer1.0-tools
+```
+
 By default we download all the libraries from GitHub and build them locally, so should require nothing to be installed ahead of time.
 If you do wish to link to existing libraries you can use the following flags to customize your build.
 
@@ -89,7 +94,8 @@ You can pass the following options to `cmake ..`.
 * `-DADDRESS_SANITIZER` -- Build with AddressSanitizer
 * `-DMEMORY_SANITIZER` --  Build with MemorySanitizer
 * `-DTHREAD_SANITIZER` -- Build with ThreadSanitizer
-* `-DUNDEFINED_BEHAVIOR_SANITIZER` Build with UndefinedBehaviorSanitizer`
+* `-DUNDEFINED_BEHAVIOR_SANITIZER` -- Build with UndefinedBehaviorSanitizer
+* `-DLINK_PROFILER` -- Link with gperftools (available profiler options are listed [here](https://github.com/gperftools/gperftools))
 
 ### Build
 To build the library and the provided samples run make in the build directory you executed CMake.
@@ -179,7 +185,7 @@ Choose Start viewer to start live video streaming of the sample H264/Opus frames
             "kinesisvideo:GetIceServerConfig",
             "kinesisvideo:ConnectAsMaster",
           ],
-          "Resource":"arn:aws:kinesisvideo:*:*:channel/\${credentials-iot:ThingName}/*"
+          "Resource":"arn:aws:kinesisvideo:*:*:channel/${credentials-iot:ThingName}/*"
       }
    ]
 }
@@ -205,19 +211,27 @@ freeIotCredentialProvider(&pSampleConfiguration->pCredentialProvider);
 ## Use Pre-generated Certificates
 The certificate generating function (createCertificateAndKey) in createDtlsSession() can take between 5 - 15 seconds in low performance embedded devices, it is called for every peer connection creation when KVS WebRTC receives an offer. To avoid this extra start-up latency, certificate can be pre-generated and passed in when offer comes.
 
-Important Note: It is recommended to rotate the certificates often - preferably for every peer connection to avoid a compromised client weakening the security of the new connections.
+**Important Note: It is recommended to rotate the certificates often - preferably for every peer connection to avoid a compromised client weakening the security of the new connections.**
 
-Take kvsWebRTCClientMaster as sample, add RtcCertificate certificates[CERT_COUNT]; to **SampleConfiguration** in Samples.h, call create certificate before signalingClientCallbacks.messageReceivedFn = masterMessageReceived; in kvsWebRTCClientMaster.c
-```
-createCertificateAndKey(GENERATED_CERTIFICATE_BITS, &pSampleConfiguration->certificates[0].pCertificate, &pSampleConfiguration->certificates[0].pPrivateKey);
-```
-
-Then pass in the pre-generated certificate in initializePeerConnection() in common.c.
+Take kvsWebRTCClientMaster as sample, add RtcCertificate certificates[CERT_COUNT]; to **SampleConfiguration** in Samples.h.
+Then pass in the pre-generated certificate in initializePeerConnection() in Common.c.
 
 ```
-configuration.certificates[0].pCertificate = pSampleConfiguration->rtcConfig.certificates[0].pCertificate;
-configuration.certificates[0].pPrivateKey = pSampleConfiguration->rtcConfig.certificates[0].pPrivateKey;
+configuration.certificates[0].pCertificate = pSampleConfiguration->certificates[0].pCertificate;
+configuration.certificates[0].pPrivateKey = pSampleConfiguration->certificates[0].pPrivateKey;
+
+where, `configuration` is of type `RtcConfiguration` in the function that calls `initializePeerConnection()`.
+
+Doing this will make sure that `createCertificateAndKey() would not execute since a certificate is already available.`
 ```
+
+## Provide Hardware Entropy Source
+
+In the mbedTLS version, the SDK uses /dev/urandom on Unix and CryptGenRandom API on Windows to get a strong entropy source. On some systems, these APIs might not be available. So, it's **strongly suggested** that you bring your own hardware entropy source. To do this, you need to follow these steps:
+
+1. Uncomment `MBEDTLS_ENTROPY_HARDWARE_ALT` in configs/config_mbedtls.h
+2. Write your own entropy source implementation by following this function signature: https://github.com/ARMmbed/mbedtls/blob/v2.25.0/include/mbedtls/entropy_poll.h#L81-L92
+3. Include your implementation source code in the linking process
 
 ## DEBUG
 ### Getting the SDPs
@@ -236,7 +250,29 @@ You can also change settings such as buffer size, number of log files for rotati
 
 ## Clang Checks
 This SDK has clang format checks enforced in builds. In order to avoid re-iterating and make sure your code
-complies, use the `check-clang.sh` to check for compliance and `clang-format.sh` to ensure compliance.
+complies, use the `scripts/check-clang.sh` to check for compliance and `scripts/clang-format.sh` to ensure compliance.
+
+## Tracing high memory and/or cpu usage
+If you would like to specifically find the code path that causes high memory and/or cpu usage, you need to recompile the SDK with this command:
+`cmake .. -DLINK_PROFILER=ON`
+
+The flag will link the SDK with [gperftools](https://github.com/gperftools/gperftools) profiler.
+
+### Heap Profile
+
+You can run your program as you normally would. You only need to specify the following environment variable to get the heap profile:
+
+`HEAPPROFILE=/tmp/heap.prof /path/to/your/binary`
+
+More information about what environment variables you can configure can be found [here](https://gperftools.github.io/gperftools/heapprofile.html)
+
+### CPU Profile
+
+Similar to the heap profile, you only need to specify the following environment variable to get the CPU profile:
+
+`CPUPROFILE=/tmp/cpu.prof /path/to/your/binary`
+
+More information about what environment variables you can configure can be found [here](https://gperftools.github.io/gperftools/cpuprofile.html)
 
 ## Documentation
 All Public APIs are documented in our [Include.h](https://github.com/awslabs/amazon-kinesis-video-streams-webrtc-sdk-c/blob/master/src/include/com/amazonaws/kinesis/video/webrtcclient/Include.h), we also generate a [Doxygen](https://awslabs.github.io/amazon-kinesis-video-streams-webrtc-sdk-c/) each commit for easier navigation.

@@ -43,8 +43,19 @@ typedef enum {
     RTC_RTX_CODEC_VP8 = 2,
 } RTX_CODEC;
 
+// congestion control callbacks
+typedef VOID (*RtcpCCOnPacketNotReceived)(UINT64 customData, UINT16 seqNum);
+typedef VOID (*RtcpCCOnPacketReceived)(UINT64 customData, UINT16 seqNum, INT32 receiveDeltaUsec);
+
 typedef struct {
     RtcPeerConnection peerConnection;
+    // UINT32 padding padding makes transportWideSequenceNumber 64bit aligned
+    // we put atomics at the top of structs because customers application could set the packing to 0
+    // in which case any atomic operations would result in bus errors if there is a misalignment
+    // for more see https://github.com/awslabs/amazon-kinesis-video-streams-webrtc-sdk-c/pull/987#discussion_r534432907
+    UINT32 padding;
+    volatile SIZE_T transportWideSequenceNumber;
+
     PIceAgent pIceAgent;
     PDtlsSession pDtlsSession;
     BOOL dtlsIsServer;
@@ -55,7 +66,7 @@ typedef struct {
     PSctpSession pSctpSession;
 
     SessionDescription remoteSessionDescription;
-    PDoubleList pTransceievers;
+    PDoubleList pTransceivers;
     BOOL sctpIsEnabled;
 
     CHAR localIceUfrag[LOCAL_ICE_UFRAG_LEN + 1];
@@ -99,6 +110,14 @@ typedef struct {
     UINT16 MTU;
 
     NullableBool canTrickleIce;
+
+    // congestion control
+    // https://tools.ietf.org/html/draft-holmer-rmcat-transport-wide-cc-extensions-01
+    UINT16 twccExtId;
+    UINT64 onPacketNotReceivedCustomData;
+    UINT64 onPacketReceivedCustomData;
+    RtcpCCOnPacketNotReceived onPacketNotReceived;
+    RtcpCCOnPacketReceived onPacketReceived;
 } KvsPeerConnection, *PKvsPeerConnection;
 
 typedef struct {
@@ -108,7 +127,7 @@ typedef struct {
 } AllocateSctpSortDataChannelsData, *PAllocateSctpSortDataChannelsData;
 
 STATUS onFrameReadyFunc(UINT64, UINT16, UINT16, UINT32);
-STATUS onFrameDroppedFunc(UINT64, UINT32);
+STATUS onFrameDroppedFunc(UINT64, UINT16, UINT16, UINT32);
 VOID onSctpSessionOutboundPacket(UINT64, PBYTE, UINT32);
 VOID onSctpSessionDataChannelMessage(UINT64, UINT32, BOOL, PBYTE, UINT32);
 VOID onSctpSessionDataChannelOpen(UINT64, UINT32, PBYTE, UINT32);

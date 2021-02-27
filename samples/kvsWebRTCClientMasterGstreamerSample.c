@@ -60,34 +60,31 @@ GstFlowReturn on_new_sample(GstElement* sink, gpointer data, UINT64 trackid)
         frame.size = (UINT32) info.size;
         frame.frameData = (PBYTE) info.data;
 
-        if (!ATOMIC_LOAD_BOOL(&pSampleConfiguration->updatingSampleStreamingSessionList)) {
-            ATOMIC_INCREMENT(&pSampleConfiguration->streamingSessionListReadingThreadCount);
-            for (i = 0; i < pSampleConfiguration->streamingSessionCount; ++i) {
-                pSampleStreamingSession = pSampleConfiguration->sampleStreamingSessionList[i];
-                frame.index = (UINT32) ATOMIC_INCREMENT(&pSampleStreamingSession->frameIndex);
+        MUTEX_LOCK(pSampleConfiguration->streamingSessionListReadLock);
+        for (i = 0; i < pSampleConfiguration->streamingSessionCount; ++i) {
+            pSampleStreamingSession = pSampleConfiguration->sampleStreamingSessionList[i];
+            frame.index = (UINT32) ATOMIC_INCREMENT(&pSampleStreamingSession->frameIndex);
 
-                if (trackid == DEFAULT_AUDIO_TRACK_ID) {
-                    pRtcRtpTransceiver = pSampleStreamingSession->pAudioRtcRtpTransceiver;
-                    frame.presentationTs = pSampleStreamingSession->audioTimestamp;
-                    frame.decodingTs = frame.presentationTs;
-                    pSampleStreamingSession->audioTimestamp +=
-                        SAMPLE_AUDIO_FRAME_DURATION; // assume audio frame size is 20ms, which is default in opusenc
-                } else {
-                    pRtcRtpTransceiver = pSampleStreamingSession->pVideoRtcRtpTransceiver;
-                    frame.presentationTs = pSampleStreamingSession->videoTimestamp;
-                    frame.decodingTs = frame.presentationTs;
-                    pSampleStreamingSession->videoTimestamp += SAMPLE_VIDEO_FRAME_DURATION; // assume video fps is 30
-                }
-
-                status = writeFrame(pRtcRtpTransceiver, &frame);
-                if (status != STATUS_SUCCESS) {
-#ifdef VERBOSE
-                    printf("writeFrame() failed with 0x%08x", status);
-#endif
-                }
+            if (trackid == DEFAULT_AUDIO_TRACK_ID) {
+                pRtcRtpTransceiver = pSampleStreamingSession->pAudioRtcRtpTransceiver;
+                frame.presentationTs = pSampleStreamingSession->audioTimestamp;
+                frame.decodingTs = frame.presentationTs;
+                pSampleStreamingSession->audioTimestamp +=
+                    SAMPLE_AUDIO_FRAME_DURATION; // assume audio frame size is 20ms, which is default in opusenc
+            } else {
+                pRtcRtpTransceiver = pSampleStreamingSession->pVideoRtcRtpTransceiver;
+                frame.presentationTs = pSampleStreamingSession->videoTimestamp;
+                frame.decodingTs = frame.presentationTs;
+                pSampleStreamingSession->videoTimestamp += SAMPLE_VIDEO_FRAME_DURATION; // assume video fps is 30
             }
-            ATOMIC_DECREMENT(&pSampleConfiguration->streamingSessionListReadingThreadCount);
+            status = writeFrame(pRtcRtpTransceiver, &frame);
+            if (status != STATUS_SRTP_NOT_READY_YET && status != STATUS_SUCCESS) {
+#ifdef VERBOSE
+                printf("writeFrame() failed with 0x%08x", status);
+#endif
+            }
         }
+        MUTEX_UNLOCK(pSampleConfiguration->streamingSessionListReadLock);
     }
 
 CleanUp:
@@ -422,7 +419,7 @@ INT32 main(INT32 argc, CHAR* argv[])
     }
     printf("[KVS GStreamer Master] KVS WebRTC initialization completed successfully\n");
 
-    pSampleConfiguration->signalingClientCallbacks.messageReceivedFn = masterMessageReceived;
+    pSampleConfiguration->signalingClientCallbacks.messageReceivedFn = signalingMessageReceived;
 
     strcpy(pSampleConfiguration->clientInfo.clientId, SAMPLE_MASTER_CLIENT_ID);
 
@@ -467,9 +464,8 @@ CleanUp:
         // Kick of the termination sequence
         ATOMIC_STORE_BOOL(&pSampleConfiguration->appTerminateFlag, TRUE);
 
-        if (pSampleConfiguration->videoSenderTid != (UINT64) NULL) {
-            // Join the threads
-            THREAD_JOIN(pSampleConfiguration->videoSenderTid, NULL);
+        if (pSampleConfiguration->mediaSenderTid != INVALID_TID_VALUE) {
+            THREAD_JOIN(pSampleConfiguration->mediaSenderTid, NULL);
         }
 
         if (pSampleConfiguration->enableFileLogging) {
@@ -486,5 +482,11 @@ CleanUp:
         }
     }
     printf("[KVS Gstreamer Master] Cleanup done\n");
-    return (INT32) retStatus;
+
+    // https://www.gnu.org/software/libc/manual/html_node/Exit-Status.html
+    // We can only return with 0 - 127. Some platforms treat exit code >= 128
+    // to be a success code, which might give an unintended behaviour.
+    // Some platforms also treat 1 or 0 differently, so it's better to use
+    // EXIT_FAILURE and EXIT_SUCCESS macros for portability.
+    return STATUS_FAILED(retStatus) ? EXIT_FAILURE : EXIT_SUCCESS;
 }

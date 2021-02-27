@@ -33,6 +33,14 @@ extern "C" {
 #define EAI_SYSTEM -11
 #endif
 
+// Windows uses EWOULDBLOCK (WSAEWOULDBLOCK) to indicate connection attempt
+// cannot be completed immediately, whereas POSIX uses EINPROGRESS.
+#ifdef _WIN32
+#define KVS_SOCKET_IN_PROGRESS EWOULDBLOCK
+#else
+#define KVS_SOCKET_IN_PROGRESS EINPROGRESS
+#endif
+
 typedef enum {
     KVS_SOCKET_PROTOCOL_NONE,
     KVS_SOCKET_PROTOCOL_TCP,
@@ -62,6 +70,13 @@ STATUS getLocalhostIpAddresses(PKvsIpAddress, PUINT32, IceSetInterfaceFilterFunc
 STATUS createSocket(KVS_IP_FAMILY_TYPE, KVS_SOCKET_PROTOCOL, UINT32, PINT32);
 
 /**
+ * @param - INT32 - IN - INT32 for the socketfd
+ *
+ * @return - STATUS status of execution
+ */
+STATUS closeSocket(INT32);
+
+/**
  * @param - PKvsIpAddress - IN - address for the socket to bind. PKvsIpAddress->port will be changed to the actual port number
  * @param - INT32 - IN - valid socket fd
  *
@@ -89,6 +104,18 @@ STATUS getIpWithHostName(PCHAR, PKvsIpAddress);
 STATUS getIpAddrStr(PKvsIpAddress, PCHAR, UINT32);
 
 BOOL isSameIpAddress(PKvsIpAddress, PKvsIpAddress, BOOL);
+
+/**
+ * @return - INT32 error code
+ */
+INT32 getErrorCode(VOID);
+
+/**
+ * @param - INT32 - IN - error code
+ *
+ * @return - PCHAR string associated with error code
+ */
+PCHAR getErrorString(INT32);
 
 #ifdef __cplusplus
 }
