@@ -18,5 +18,8 @@ export GST_DEBUG=3
 export AWS_KVS_CACERT_PATH=../../certs/cert.pem
 
 # LD_LIBRARY_PATH=../open-source/lib ./kvsWebrtcClientMasterGstSample test audio-video
-LD_LIBRARY_PATH=../open-source/lib ./kvsWebrtcClientMasterGstSample ${SIGNALLING_CHANNEL_NAME} video-only
+
+# LD_LIBRARY_PATH=../open-source/lib ./kvsWebrtcClientMasterGstSample ${SIGNALLING_CHANNEL_NAME} video-only
+LD_LIBRARY_PATH=/home/pi/kvs-os-libs/lib/ ./kvsWebrtcClientMasterGstSample ${SIGNALLING_CHANNEL_NAME} video-only
+
 # LD_LIBRARY_PATH=../open-source/lib ./kvsWebrtcClientMasterGstSample eu-west-1:27302e61-a0b3-43b6-8d99-64bf347fe18b video-only

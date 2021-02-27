@@ -20,5 +20,6 @@ make install
 
 ```
 cmake .. -DOPEN_SRC_INSTALL_PREFIX=${OPEN_SRC_INSTALL_PREFIX}
+make
 
 ```

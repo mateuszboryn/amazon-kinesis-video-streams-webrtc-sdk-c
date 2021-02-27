@@ -4,8 +4,16 @@ set(OPEN_SRC_INSTALL_PREFIX "${CMAKE_CURRENT_SOURCE_DIR}/open-source" CACHE PATH
 
 find_package(PkgConfig REQUIRED)
 
-include_directories(${OPEN_SRC_INSTALL_PREFIX}/include)
-link_directories(${OPEN_SRC_INSTALL_PREFIX}/lib)
+set(OPEN_SRC_LIB_DIR ${OPEN_SRC_INSTALL_PREFIX}/lib)
+
+#find_library (ssl_LIB ssl PATHS ${OPEN_SRC_LIB_DIR} NO_DEFAULT_PATH)
+#find_library (crypto_LIB crypto PATHS ${OPEN_SRC_LIB_DIR} NO_DEFAULT_PATH)
+#find_library (websockets_LIB websockets PATHS ${OPEN_SRC_LIB_DIR} NO_DEFAULT_PATH)
+#find_library (kvspicUtils_LIB kvspicUtils PATHS ${OPEN_SRC_LIB_DIR} NO_DEFAULT_PATH)
+#find_library (kvsCommonLws_LIB kvsCommonLws PATHS ${OPEN_SRC_LIB_DIR} NO_DEFAULT_PATH)
+#find_library (kvsWebrtcSignalingClient_LIB kvsWebrtcSignalingClient PATHS ${OPEN_SRC_LIB_DIR} NO_DEFAULT_PATH)
+#find_library (kvsWebrtcClient_LIB kvsWebrtcClient PATHS ${OPEN_SRC_LIB_DIR} NO_DEFAULT_PATH)
+
 
 pkg_check_modules(GST gstreamer-1.0)
 if(GST_FOUND)
@@ -37,14 +45,17 @@ else()
 endif()
 
 
+include_directories(${OPEN_SRC_INSTALL_PREFIX}/include)
 include_directories(${OPEN_SRC_INCLUDE_DIRS})
+link_directories(${OPEN_SRC_INSTALL_PREFIX}/lib)
 
 add_executable(
       kvsWebrtcClientMasterGstSample
       ${CMAKE_CURRENT_SOURCE_DIR}/Common.c
       ${CMAKE_CURRENT_SOURCE_DIR}/kvsWebRTCClientMasterGstreamerSample.c
     )
-    target_link_libraries(kvsWebrtcClientMasterGstSample kvsWebrtcClient kvsWebrtcSignalingClient kvsCommonLws ${GST_SAMPLE_LIBRARIES} kvspicUtils ssl websockets)
+    #target_link_libraries(kvsWebrtcClientMasterGstSample ${CMAKE_THREAD_LIBS_INIT} ${ssl_LIB} ${crypto_LIB} ${websockets_LIB} ${kvsCommonLws_LIB} ${kvspicUtils_LIB} ${kvsWebrtcSignalingClient_LIB} ${kvsWebrtcClient_LIB}  ${GST_SAMPLE_LIBRARIES})
+    target_link_libraries(kvsWebrtcClientMasterGstSample kvsWebrtcClient kvsWebrtcSignalingClient kvsCommonLws ${GST_SAMPLE_LIBRARIES} kvspicUtils ssl crypto usrsctp websockets)
 
 install(TARGETS kvsWebrtcClientMasterGstSample
   RUNTIME DESTINATION bin
