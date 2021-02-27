@@ -48,6 +48,11 @@ function(build_dependency lib_name)
   configure_file(
     ./CMake/Dependencies/lib${lib_name}-CMakeLists.txt
     ${OPEN_SRC_INSTALL_PREFIX}/lib${lib_name}/CMakeLists.txt COPYONLY)
+  
+  file(GLOB LIB_PATCHES "./CMake/Dependencies/lib${lib_name}-*.patch")
+  message(STATUS "Copying patches for dependency ${lib_name}: ${LIB_PATCHES}")
+  file(COPY ${LIB_PATCHES} DESTINATION ${OPEN_SRC_INSTALL_PREFIX}/lib${lib_name}/)
+  
   execute_process(
     COMMAND ${CMAKE_COMMAND} ${build_args}
             -DOPEN_SRC_INSTALL_PREFIX=${OPEN_SRC_INSTALL_PREFIX} -G
