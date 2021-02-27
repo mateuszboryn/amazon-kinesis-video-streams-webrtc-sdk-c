@@ -629,7 +629,7 @@ STATUS createSampleConfiguration(PCHAR channelName, SIGNALING_CHANNEL_ROLE_TYPE 
                                  PSampleConfiguration* ppSampleConfiguration)
 {
     STATUS retStatus = STATUS_SUCCESS;
-    PCHAR pAccessKey, pSecretKey, pSessionToken, pLogLevel;
+    PCHAR /*pAccessKey, pSecretKey, pSessionToken,*/ pLogLevel;
     PSampleConfiguration pSampleConfiguration = NULL;
     UINT32 logLevel;
 
@@ -637,9 +637,9 @@ STATUS createSampleConfiguration(PCHAR channelName, SIGNALING_CHANNEL_ROLE_TYPE 
 
     CHK(NULL != (pSampleConfiguration = (PSampleConfiguration) MEMCALLOC(1, SIZEOF(SampleConfiguration))), STATUS_NOT_ENOUGH_MEMORY);
 
-    CHK_ERR((pAccessKey = getenv(ACCESS_KEY_ENV_VAR)) != NULL, STATUS_INVALID_OPERATION, "AWS_ACCESS_KEY_ID must be set");
-    CHK_ERR((pSecretKey = getenv(SECRET_KEY_ENV_VAR)) != NULL, STATUS_INVALID_OPERATION, "AWS_SECRET_ACCESS_KEY must be set");
-    pSessionToken = getenv(SESSION_TOKEN_ENV_VAR);
+//    CHK_ERR((pAccessKey = getenv(ACCESS_KEY_ENV_VAR)) != NULL, STATUS_INVALID_OPERATION, "AWS_ACCESS_KEY_ID must be set");
+//    CHK_ERR((pSecretKey = getenv(SECRET_KEY_ENV_VAR)) != NULL, STATUS_INVALID_OPERATION, "AWS_SECRET_ACCESS_KEY must be set");
+//    pSessionToken = getenv(SESSION_TOKEN_ENV_VAR);
     pSampleConfiguration->enableFileLogging = FALSE;
     if (NULL != getenv(ENABLE_FILE_LOGGING)) {
         pSampleConfiguration->enableFileLogging = TRUE;
@@ -657,8 +657,17 @@ STATUS createSampleConfiguration(PCHAR channelName, SIGNALING_CHANNEL_ROLE_TYPE 
 
     SET_LOGGER_LOG_LEVEL(logLevel);
 
-    CHK_STATUS(
+/*    CHK_STATUS(
         createStaticCredentialProvider(pAccessKey, 0, pSecretKey, 0, pSessionToken, 0, MAX_UINT64, &pSampleConfiguration->pCredentialProvider));
+*/
+    CHK_STATUS(createLwsIotCredentialProvider(
+            "c6xou6tcqwaiv.credentials.iot.eu-west-1.amazonaws.com",  // IoT credentials endpoint
+            "/home/pi/tta-rpi/tta-auth/deviceCert.pem",  // path to iot certificate
+            "/home/pi/tta-rpi/tta-auth/devicePrivateKey.pem", // path to iot private key
+	    "/home/pi/amazon-kinesis-video-streams-webrtc-sdk-c/utils/AmazonRootCA1.pem", // path to CA cert
+            "TTAIotRoleAlias-dev", // IoT role alias
+            "acec9d17-b143-427d-84e7-844814b79c4f", // iot thing name, recommended to be same as your channel name
+            &pSampleConfiguration->pCredentialProvider));
 
     pSampleConfiguration->audioSenderTid = INVALID_TID_VALUE;
     pSampleConfiguration->videoSenderTid = INVALID_TID_VALUE;
@@ -774,7 +783,8 @@ STATUS freeSampleConfiguration(PSampleConfiguration* ppSampleConfiguration)
         CVAR_FREE(pSampleConfiguration->cvar);
     }
 
-    freeStaticCredentialProvider(&pSampleConfiguration->pCredentialProvider);
+    //freeStaticCredentialProvider(&pSampleConfiguration->pCredentialProvider);
+    freeIotCredentialProvider(&pSampleConfiguration->pCredentialProvider);
 
     MEMFREE(*ppSampleConfiguration);
     *ppSampleConfiguration = NULL;
