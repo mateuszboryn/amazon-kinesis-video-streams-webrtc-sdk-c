@@ -2,7 +2,7 @@
 .DS_Store
 .github/github_deploy_key.enc
 .idea
-build
+build*/
 cmake-build-debug/
 cmake-build-release/
 doc/

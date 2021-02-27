@@ -7,7 +7,8 @@ cd "$(dirname "$0")"
 
 source creds.sh
 
-cd ../build/
+cd ../build-1.5.0-iot/
+# cd ../build/
 
 export AWS_KVS_VERBOSE=1
 # export AWS_KVS_LOG_LEVEL=1
