@@ -657,7 +657,7 @@ STATUS createSampleConfiguration(PCHAR channelName, SIGNALING_CHANNEL_ROLE_TYPE 
             "c6xou6tcqwaiv.credentials.iot.eu-west-1.amazonaws.com",  // IoT credentials endpoint
             "/home/pi/tta-rpi/tta-auth/deviceCert.pem",  // path to iot certificate
             "/home/pi/tta-rpi/tta-auth/devicePrivateKey.pem", // path to iot private key
-	    "/home/pi/amazon-kinesis-video-streams-webrtc-sdk-c/utils/AmazonRootCA1.pem", // path to CA cert
+            "/home/pi/tta-rpi/certs/AmazonRootCA1.pem", // path to CA cert
             "TTAIotRoleAlias-dev", // IoT role alias
             "acec9d17-b143-427d-84e7-844814b79c4f", // iot thing name, recommended to be same as your channel name
             &pSampleConfiguration->pCredentialProvider));
