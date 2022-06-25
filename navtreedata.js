@@ -23,35 +23,13 @@ for the JavaScript code in this file
 var NAVTREE =
 [
   [ "Amazon Kinesis Webrtc C SDK", "index.html", [
-    [ "Modules", "modules.html", "modules" ],
-    [ "Classes", "annotated.html", [
-      [ "Class List", "annotated.html", "annotated_dup" ],
-      [ "Class Index", "classes.html", null ],
-      [ "Class Members", "functions.html", [
-        [ "All", "functions.html", null ],
-        [ "Variables", "functions_vars.html", null ]
-      ] ]
-    ] ],
-    [ "Files", "files.html", [
-      [ "File List", "files.html", "files_dup" ],
-      [ "File Members", "globals.html", [
-        [ "All", "globals.html", "globals_dup" ],
-        [ "Functions", "globals_func.html", null ],
-        [ "Typedefs", "globals_type.html", null ],
-        [ "Enumerations", "globals_enum.html", null ],
-        [ "Enumerator", "globals_eval.html", null ],
-        [ "Macros", "globals_defs.html", "globals_defs" ]
-      ] ]
-    ] ]
+    [ "Introduction", "md_Introduction.html", null ]
   ] ]
 ];
 
 var NAVTREEINDEX =
 [
-"Include_8h.html",
-"group__ICE.html#gaa3c47f9bd60991336a88baec443f61bf",
-"group__SessionDescriptionInit.html#gac07d95fbbf36e97a7b71b0e606454b75",
-"structSignalingMessage.html#a278d902dd02371c74db3f9aa2a90960b"
+"index.html"
 ];
 
 var SYNCONMSG = 'click to disable panel synchronisation';
